@@ -9,7 +9,8 @@
   },
   "scripts": {
     "wscmd": "node bin/wscmd",
-    "build": "pkg bin/wscmd -o wscmd"
+    "build": "pkg bin/wscmd -o wscmd",
+    "build-all": "pkg -t linux,macos,win bin/wscmd -o wscmd"
   },
   "dependencies": {
     "js-yaml": "^4.1.0",
