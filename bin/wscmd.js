@@ -37,6 +37,8 @@ const configure = {
   execute: `wscmd`,
   // 실행 경로
   pwdPath: process.env.PWD ? process.env.PWD : process.cwd(),
+  // 실행 방식을 구분
+  nodejs: equals(require.main, module),
   // 패키지를 구분
   pkg: process.pkg ? true : false,
 };
@@ -176,7 +178,8 @@ let connections = {};
 //
 // 프로그램을 실행합니다
 //
-run();
+const shouldRunAutomatically = configure.nodejs;
+if (shouldRunAutomatically) run();
 
 // 프로그램을 실행
 function run() {
