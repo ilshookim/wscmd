@@ -3,14 +3,14 @@
   "version": "1.0.0",
   "author": "copyright (c) 2022 websocket command, written by ilshookim",
   "description": "wscmd is a websocket command tool to connect websocket servers for send and receive text and json.",
-  "main": "bin/wscmd",
+  "main": "bin/wscmd.js",
   "bin": {
-    "www": "./bin/wscmd"
+    "wscmd": "./bin/wscmd.js"
   },
   "scripts": {
-    "wscmd": "node bin/wscmd",
-    "build": "pkg bin/wscmd -o wscmd",
-    "build-all": "pkg -t linux,macos,win bin/wscmd -o wscmd"
+    "wscmd": "node bin/wscmd.js",
+    "build": "pkg bin/wscmd.js -o wscmd",
+    "build-all": "pkg -t linux,macos,win bin/wscmd.js -o wscmd"
   },
   "dependencies": {
     "js-yaml": "^4.1.0",
