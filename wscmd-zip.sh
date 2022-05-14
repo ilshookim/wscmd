@@ -1,3 +1,6 @@
+npm run build-all
+rm wscmd
+
 cp wscmd-macos wscmd
 zip wscmd-macos.zip wscmd
 rm wscmd
