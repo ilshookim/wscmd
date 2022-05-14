@@ -1,0 +1,31 @@
+{
+  "name": "wscmd",
+  "version": "1.0.0",
+  "author": "copyright (c) 2022 websocket command, written by ilshookim",
+  "description": "wscmd is a websocket command tool to connect websocket servers for send and receive text and json.",
+  "main": "bin/wscmd",
+  "bin": {
+    "www": "./bin/wscmd"
+  },
+  "scripts": {
+    "wscmd": "node bin/wscmd",
+    "build": "pkg bin/wscmd -o wscmd"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "ws": "^8.6.0",
+    "yargs": "^17.4.1"
+  },
+  "devDependencies": {
+    "mocha": "^10.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitlab.com/ilshookim/wscmd.git"
+  },
+  "license": "GPLv3 or Commercial",
+  "homepage": "https://gitlab.com/ilshookim/wscmd#readme",
+  "bugs": {
+    "url": "https://gitlab.com/ilshookim/wscmd/issues"
+  }
+}

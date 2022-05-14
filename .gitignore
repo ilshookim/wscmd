@@ -1,3 +1,9 @@
+# 추가한 파일
+.DS_Store
+package-lock.json
+node_modules/
+.idea/
+
 # Logs
 logs
 *.log
