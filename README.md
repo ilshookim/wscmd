@@ -212,7 +212,7 @@ $ hi 'I said' hi!
 
 여러 커맨드를 가져와 한번에 텍스트로 보내봅시다.
 
-**팁! 프롬프트에 붙일 수 있는 텍스트 길이에 제한이 있습니다. 262144 바이트보다 크면 get * 커맨드로 전체 텍스트를 가져와도 일부가 제외됩니다.**
+**팁! 프롬프트에 붙일 수 있는 텍스트 길이에 제한이 있습니다. 262144 바이트보다 크면 텍스트를 가져오는 과정에서 텍스트 길이가 넘어가는 일부를 제외합니다.**
 
 ```shell
 1) 커맨드 확인하기
@@ -229,7 +229,6 @@ $ get hi* hi
 + get hi!: I said, hello world!
 + get hi: hello, world!
 $ cmd 'hello, world!' 'I said, hello world!' 'hello, world!'
-  ^ 프롬프트 편집 위치
 > 'hello, world!'
 > 'I said, hello world!'
 > 'hello, world!'
@@ -376,7 +375,7 @@ Goodbye (No Saving)
 $ ./wscmd --prj=echo ws://echo.websocket.org
 ```
 
-프로젝트 이름을 지정하면 이전 커맨드와 히스토리를 모두 복원하여 마지막 작업하던 상태에서 다시 시작할 수 있습니다.
+프로젝트 이름을 지정하면 이전 커맨드와 히스토리를 모두 복원하여 프로젝트마다 마지막 작업하던 상태에서 다시 시작할 수 있습니다.
 
 예컨대 프로젝트 이름을 --prj=echo 라고 지정한 작업은 종료시 echo-command, echo-history에 보관합니다.
 
@@ -385,7 +384,7 @@ $ ./wscmd --prj=echo ws://echo.websocket.org
 % vi echo-history
 ```
 
-보관된 파일은 직접 열고 편리하게 수정할 수 있습니다.
+보관된 파일은 텍스트 파일이므로 편집기에서 직접 열고 수정할 수 있습니다.
 
 ## ECHO 서버 예시
 
@@ -434,8 +433,8 @@ wscmd 1.0.0 - copyright (c) 2022 websocket command, written by ilshookim
 $ cmd set sub+ {"command":"subscribe","topic":"/myhome/grandfloor/+room/temperature"}
 $ cmd set sub# {"command":"subscribe","topic":"/myhome/grandfloor/#"}
 $ cmd set pub-kitchen {"command":"publish","topic":"/myhome/grandfloor/kitchen/temperature","message":"25 degree"}
-# cmd set pub-bedroom-on {"command":"publish","topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree","autoDelete": true}
-# cmd set pub-bedroom-off {"command":"publish","topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree","autoDelete": false}
+$ cmd set pub-bedroom-on {"command":"publish","topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree","autoDelete": true}
+$ cmd set pub-bedroom-off {"command":"publish","topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree","autoDelete": false}
 
 $ sub+
 > {"command":"subscribe","topic":"/myhome/grandfloor/+room/temperature"}
@@ -474,13 +473,13 @@ npm 모듈과 node, npm, pkg 기술을 공유해 주신 분들께 감사드립�
 node: v16.9.1, npm: 8.5.0, pkg: 5.6.0
 modules: "js-yaml": "^4.1.0", "ws": "^8.6.0", "yargs": "^17.4.1"
 
-## v2.0 (계획)
+## v2.0 (가까운 계획)
 
 다음 버전은 3개 기능을 주안점으로 지원하려고 합니다. 언젠가 여유가 있을 때 작업하도록 하겠습니다.
 
 1) 다수의 웹소켓 연결을 관리하고 (url set/get/add/del/open/close)
 2) 연결을 선택하여 커맨드를 주고받으며 (url sel/all)
-3) 주고받을시 텍스트를 원하는대로 바꿀 수 있습니다 (${epoch,ts,uid,seq,rand,param} and --parameters, $delay)
+3) 주고받을시 텍스트를 원하는대로 바꿀 수 있습니다 (${epoch,ts,uid,seq,rand,param}과 --parameters, $delay)
 
 ## v3.0 (먼 계획)
 
