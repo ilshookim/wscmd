@@ -33,18 +33,20 @@ const configure = {
   version: `1.0.0`,
   // 작성자
   written: `copyright (c) 2022 websocket command, written by ilshookim`,
-  // 프로그램
+  // 실행파일 이름
   execute: `wscmd`,
   // 실행 경로
   pwdPath: process.env.PWD ? process.env.PWD : process.cwd(),
-  // 실행 방식을 구분
-  nodejs: equals(require.main, module),
+  // 노드 런타임을 구분
+  node: equals(require.main, module),
   // 패키지를 구분
   pkg: process.pkg ? true : false,
 };
 
 // 함수
 const functions = {
+  // 키입력을 시작
+  keys: letsKeys,
   // 프롬프트를 시작
   prompts: letsPrompts,
   // 전체 서버에 연결을 시작
@@ -91,8 +93,8 @@ const constants = {
   maxHistorySize: 100,
   // 히스토리 표시 기본값
   showHistorySize: 20,
-  // ESC 키로 입력중인 커맨드를 모두 삭제
-  clearPromptWhenEscKey: true,
+  // 최대 프롬프트 제한수
+  maxPromptLimit: 262144,
   // 프롬프트 형식
   prompt: `$ `,
 };
@@ -176,10 +178,10 @@ let history = [];
 let connections = {};
 
 //
-// 프로그램을 실행합니다
+// 프로그램을 실행합니다 /NODEJS 런타임에서 호출하면 자동으로 run() 실행/
 //
-const shouldRunAutomatically = configure.nodejs;
-if (shouldRunAutomatically) run();
+const letsRunWhenNodeRuntime = configure.node;
+if (letsRunWhenNodeRuntime) run();
 
 // 프로그램을 실행
 function run() {
@@ -216,9 +218,9 @@ function run() {
   onUrl(statesOff);
 
   // 연결이 한 개도 없으면 프로그램을 종료합니다
-  const noConnections = zero(items(connections));
+  const nothingConnections = zero(items(connections));
   // 한줄을 띄움
-  if (!noConnections) console.log(``);
+  if (!nothingConnections) console.log(``);
   // 프로그램을 종료
   else {
     // 사용방법을 출력
@@ -250,21 +252,25 @@ function run() {
   // 웹소켓을 시작합니다
   letsConnections();
 
+  // 키입력을 시작합니다
+  letsKeys();
+
   // 프롬프트를 시작합니다
   letsPrompts();
 }
 
 // 프롬프트를 시작
 function letsPrompts() {
-  // 이전 프롬프트를 종료합니다
-  if (prompt) {
-    // 프롬프트 대체를 설정
+  // 이전 프롬프트가 이미 있는지 확인합니다
+  const whenAlreadyExistsPrompt = prompt;
+  if (whenAlreadyExistsPrompt) {
+    // 이전 프롬프트 대체를 시작
     shouldReplacePrompt = true;
-    // 프롬프트 종료
+    // 이전 프롬프트 종료
     prompt.close();
   }
 
-  // 프롬프트를 시작합니다
+  // 새로운 프롬프트를 시작합니다
   prompt = Readline.createInterface({
     // 입력라인에서 입출력을 활용
     input: process.stdin,
@@ -284,8 +290,8 @@ function letsPrompts() {
   // 프로그램을 종료 이벤트를 처리
   prompt.on(`close`, function onPromptClose() {
     // 프로그램을 종료를 확인
-    const shouldProgramExit = !shouldReplacePrompt;
-    if (shouldProgramExit) {
+    const whenProgramExit = !shouldReplacePrompt;
+    if (whenProgramExit) {
       // 저장없이 종료
       if (!shouldSavingWhenExit) goodbye(`${constants.goodbye} (No Saving)`);
       // 히스토리 파일과 커맨드 파일을 저장하고 종료
@@ -306,20 +312,53 @@ function letsPrompts() {
         }
       }
     }
-    // 프롬프트를 대체하는 중이면 프로그램을 종료하지 않음
+    // 새로운 프롬프트로 대체를 완료
     shouldReplacePrompt = false;
   });
 
-  // 프롬프트에서 라인 이벤트를 처리
+  // 프롬프트에서 입력한 라인을 처리
   prompt.on(`line`, function onPromptLine(line) {
     onPrompt(line);
   });
 
+  //
+  // 내부 함수
+  //
+
+  // 프롬프트에서 커맨드를 자동완성 fixMe@220515 라인 첫머리에서 자동완성한 경우에만 잘 동작하고 두번째, 세번째 커맨드에서는 오동작
+  // - line: 프롬프트에서 받은 문자열
+  function onPromptAutoComplete(line) {
+    // 예약어를 배열로 작성
+    const reserved = constants.reserved.split(' ');
+    // 예약어와 커맨드를 하나로 합침
+    const addCommand = true;
+    const complete = addCommand ? [ ...reserved, ...Object.keys(command) ] : [ ...reserved ];
+    // 입력한 커맨드를 배열로 작성
+    const commands = line.split(' ');
+    // 히트한 커맨드를 배열로 작성
+    const hits = complete.filter((c) => c.startsWith(commands.slice(-1)));
+    // 입력한 커맨드가 히트하였으면 자동완성
+    const whenAutoCompletion = (items(commands) > 1) && (equals(items(hits), 1));
+    if (whenAutoCompletion) {
+      // 커맨드를 자동완성하고
+      const lastCmd = commands.slice(-1)[0];
+      const pos = items(lastCmd);
+      prompt.line = line.slice(0, -pos).concat(hits[0]);
+      // 커서의 위치를 자동완성한 끝으로 이동
+      prompt.cursor = items(prompt.line) + 1;
+    }
+    // 입력한 커맨드와 함께 히트한 경우 히트한 배열, 그렇지 않으면 커맨드 집합을 반환
+    return [items(hits) ? hits.sort() : complete.sort(), line];
+  }
+}
+
+// 키입력을 시작합니다
+function letsKeys() {
   // 프롬프트에서 ESC 키를 눌러 입력한 라인을 삭제
-  if (constants.clearPromptWhenEscKey) process.stdin.on(`keypress`, function onKeyPress(ch, key) {
+  process.stdin.on(`keypress`, function onKeyPress(_, key) {
     // 입력한 라인에 삭제가 필요한지 확인
-    const shouldClearPrompt = key && equals(key.name, `escape`) && prompt && !empty(prompt.line);
-    if (shouldClearPrompt) {
+    const whenClearPrompt = key && equals(key.name, `escape`) && prompt && !empty(prompt.line);
+    if (whenClearPrompt) {
       // 터미널에서 입력하던 라인을 삭제
       const [clearLineLeft, clearLineRight, clearLineWhole] = [-1, 1, 0];
       Readline.clearLine(process.stdout, clearLineWhole);
@@ -332,35 +371,6 @@ function letsPrompts() {
       prompt.prompt();
     }
   });
-
-  //
-  // 내부 함수
-  //
-
-  // 프롬프트에서 커맨드를 자동완성
-  // - line: 프롬프트에서 받은 문자열
-  function onPromptAutoComplete(line) {
-    // 예약어를 배열로 작성
-    const reserved = constants.reserved.split(' ');
-    // 예약어와 커맨드를 하나로 합침
-    const addCommand = true;
-    const complete = addCommand ? [ ...reserved, ...Object.keys(command) ] : [ ...reserved ];
-    // 입력한 커맨드를 배열로 작성
-    const commands = line.split(' ');
-    // 히트한 커맨드를 배열로 작성
-    const hits = complete.filter((c) => c.startsWith(commands.slice(-1)));
-    // 입력한 커맨드가 히트하였으면
-    if ((items(commands) > 1) && (equals(items(hits), 1))) {
-      // 커맨드를 자동완성하고
-      const lastCmd = commands.slice(-1)[0];
-      const pos = items(lastCmd);
-      prompt.line = line.slice(0, -pos).concat(hits[0]);
-      // 커서의 위치를 자동완성한 끝으로 이동
-      prompt.cursor = items(prompt.line) + 1;
-    }
-    // 입력한 커맨드와 함께 히트한 경우 히트한 배열, 그렇지 않으면 커맨드 집합을 반환
-    return [items(hits) ? hits.sort() : complete.sort(), line];
-  }
 }
 
 // 프롬프트에서 받은 라인을 처리
@@ -379,7 +389,7 @@ function onPrompt(line) {
   const param = Yargs.help(helpOff).parse(line);
   const parse = { ...param, params: param._, raw: [...param._], cmd: param._.shift(), sub: param._[0] };
 
-  // 프롬프트으로 예약된 커맨드와 일반 커맨드를 처리합니다
+  // 프롬프트로 예약된 커맨드와 일반 커맨드를 처리합니다
   switch (parse.cmd) {
     // cmd 예약어는 커맨드를 처리합니다
     case `cmd`:
@@ -502,35 +512,42 @@ function onCmd(parse, quick = true) {
     case `get`:
       // /quick 커맨드가 아니면/ sub 커맨드를 배열에서 삭제
       if (!quick) parse.params.shift();
-      // 페이로드를 가져와 문자열로 합침
-      let [count, commands] = [0, `cmd `];
+      // 커맨드의 페이로드를 가져와 텍스트로 합침
+      let [count, text] = [0, ``];
       // 가져올 커맨드를 확인
       for (const wildcard of parse.params) if (!empty(wildcard)) {
-        // 커맨드에서 확인
+        // 전체 커맨드에서 가져올 커맨드를 확인
         for (const [cmd, payload] of Object.entries(command)) {
           // 커맨드를 검색
           if (search(cmd, wildcard)) {
-            // 검색한 커맨드를 출력
-            console.log(`get ${cmd}: ${payload}`);
-            // 커맨드를 문자열로 합침
-            if (!empty(payload)) { commands += `'${payload}' `; count++; }
+            // 텍스트 길이가 프롬프트 범위를 초과하는지 확인
+            const whenOverLimit = text.length + payload.length > constants.maxPromptLimit;
+            // 범위를 벗어난 커맨드를 출력
+            if (whenOverLimit) console.log(`- get ${cmd}: ${payload}`);
+            else {
+              // 합쳐질 커맨드를 출력
+              console.log(`+ get ${cmd}: ${payload}`);
+              // 텍스트를 합침
+              if (!empty(payload)) text += `'${payload}' `;
+              // 텍스트를 합친 카운드
+              count++;
+            }
           }
         }
       }
-      // 문자열로 합친 커맨드를 프롬프트에 반영
-      prompt.line = commands.trim();
-      // 문자열 끝으로 커서를 이동하고 프롬프트를 출력
-      const [cursor, preserveCursor] = [true, false];
-      render(`  ${count} items`, cursor, preserveCursor);
-      // 프롬프트를 미리 출력하여 이후에는 프롬프트를 출력을 생략
-      shouldRenderPrompt = false;
+      // 텍스트 전후에 공백을 제거
+      text = text.trim();
+      // 텍스트가 비었는지 확인
+      const whenPaste = !empty(text);
+      // 텍스트가 있으면 프롬프트에 반영
+      if (whenPaste) prompt.line = `cmd ${text}`;
       break;
 
     case `set`:
       // /quick 커맨드가 아니면/ sub 커맨드를 배열에서 삭제
       if (!quick) parse.params.shift();
       // 커맨드를 확인
-      let sets = false;
+      let whenSet = false;
       for (let i = 0; i < items(parse.params); i++) {
         let key, value;
         const cmd = parse.params[i];
@@ -547,18 +564,19 @@ function onCmd(parse, quick = true) {
           value = parse.params[i + 1];
           i++;
         }
-        const valid = !empty(key) && !empty(value);
-        if (valid) {
+        // set이 가능한지 확인
+        const whenValidCmdAndPayload = !empty(key) && !empty(value);
+        if (whenValidCmdAndPayload) {
           // 커맨드를 추가
           command[key] = disclosureQuotes(value);
           // 지정한 커맨드를 출력
-          console.log(`set ${key}: ${command[key]}`);
-          sets = true;
+          console.log(`+ set ${key}: ${command[key]}`);
+          whenSet = true;
         } else {
-          console.log(`set ${key}: undefined`);
+          console.log(`- set ${key}: undefined`);
         }
       }
-      if (sets) console.log(`  ${items(command)} items`);
+      if (whenSet) console.log(`  ${items(command)} items`);
       break;
 
     case `del`:
@@ -571,21 +589,20 @@ function onCmd(parse, quick = true) {
           // 삭제 대상인 커맨드인지 확인
           if (search(cmd, wildcard)) {
             // 커맨드를 출력하여 검토
-            console.log(`${cmd}: ${payload}`);
+            console.log(`- ${cmd}: ${payload}`);
             deletes.push(cmd);
           }
         }
       }
       // 검토한 항목이 있으면 삭제를 질의
-      if (items(deletes)) prompt.question(`  [Y/n] `, (answer) => {
-        // 삭제를 결정
-        const shouldDelete = equals(answer.toLowerCase(), `y`);
-        if (shouldDelete) {
-          // 검토한 커맨드를 모두 삭제
-          for (const cmd of deletes) delete command[cmd];
-          // 삭제한 결과를 출력
-          console.log(`  ${items(command)} items (deleted ${items(deletes)} items)`);
-        }
+      if (items(deletes)) questionYesNo(`  [Y/n] `, function onYes() {
+        // 검토한 커맨드를 모두 삭제
+        for (const cmd of deletes) delete command[cmd];
+        // 삭제한 결과를 출력
+        console.log(`  ${items(command)} items (deleted ${items(deletes)} items)`);
+        // 프롬프트를 출력
+        render();
+      }, function onNo() {
         // 프롬프트를 출력
         render();
       });
@@ -664,25 +681,25 @@ function onHistory(parse) {
       // 히스토리를 복사하고
       let remain = history.slice().reverse();
       // 삭제 대상인 히스토리를 검토
+      const noDelete = true;
       for (const wildcard of parse.params) remain = remain.filter(cmd => {
         // 일치하면 제거하고
         if (search(cmd, wildcard)) { console.log(cmd); }
         // 일치하지 않은 항목을 남김
-        else return true;
+        else return noDelete;
       });
       // 검토한 항목이 있으면 삭제를 질의
       const deletes = items(history) - items(remain);
-      if (deletes) prompt.question(`  [Y/n] `, (answer) => {
-        // 삭제를 결정
-        const shouldDelete = equals(answer.toLowerCase(), `y`);
-        if (shouldDelete) {
-          // 검토한 히스토리를 모두 삭제
-          history = remain.reverse();
-          // 프롬프트를 다시 시작
-          letsPrompts();
-          // 삭제한 결과를 출력
-          console.log(`  ${items(history)} items (deleted ${deletes} items [${parse.params}])`);
-        }
+      if (deletes) questionYesNo(`  [Y/n] `, function onYes() {
+        // 검토한 히스토리를 모두 삭제
+        history = remain.reverse();
+        // 프롬프트를 다시 시작
+        letsPrompts();
+        // 삭제한 결과를 출력
+        console.log(`  ${items(history)} items (deleted ${deletes} items [${parse.params}])`);
+        // 프롬프트를 출력
+        render();
+      }, function onNo() {
         // 프롬프트를 출력
         render();
       });
@@ -696,7 +713,7 @@ function onHistory(parse) {
       // 히스토리 카운트를 확인
       const count = parse.params ? parseInt(parse.params[0]) : 0;
       // 히스토리 카운트만큼 출력
-      if (count > 0) historyAll(count);
+      if (!zero(count)) historyAll(count);
       break;
   }
   else {
@@ -753,8 +770,8 @@ function letsConnections() {
         // 연결이 모두 끊기면 프로그램을 종료
         online(function onState(states) {
           // 연결이 모두 끊겼는지 확인: 연결중인 항목이 없고 연결된 항목이 없으면 모두 끊긴것
-          const offline = zero(states.connecting) && zero(states.open);
-          if (offline) {
+          const whenOffline = zero(states.connecting) && zero(states.open);
+          if (whenOffline) {
             // 프롬프트를 종료하고 프로그램을 종료
             if (prompt) prompt.close();
             // 프로그램을 종료
@@ -797,9 +814,9 @@ function sender(payload) {
     // 연결된 전체 목록에서 웹소켓을 연결을 확인
     const connection = connections[id];
     // 웹소켓 연결이 온라인 상태인지 확인
-    const online = connection && connection.ws && equals(connection.ws.readyState, 1);
+    const whenOnline = connection && connection.ws && equals(connection.ws.readyState, 1);
     // 연결된 웹소켓에 커맨드를 전송
-    if (online) {
+    if (whenOnline) {
       connection.ws.send(payload);
       count++;
     }
@@ -869,6 +886,22 @@ function goodbye(message = constants.goodbye, cursor = false) {
   render(message, cursor);
   // 프로그램을 종료
   process.exit(0);
+}
+
+// 문답 [Y/n]
+// - question: 질문
+// - onYes: 긍정적인 답변
+// - onNo: 부정적인 답변
+function questionYesNo(question, onYes, onNo) {
+  const whenHaveQuestion = prompt && !empty(question);
+  if (whenHaveQuestion) prompt.question(question, (answer) => {
+    // 삭제를 결정
+    const whenYes = equals(answer.toLowerCase(), `y`);
+    // Yes 처리
+    if (whenYes && onYes) onYes();
+    // No 처리
+    else if (onNo) onNo();
+  });
 }
 
 // HTTP 웹소켓 요청과 응답을 한번에 처리, 실패한 경우에 재접속

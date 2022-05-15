@@ -36,7 +36,7 @@ $ curl --include \
 
 웹소켓 클라이언트로 활용하기에 그다지 편리해 보이지 않습니다. 더구나 텍스트를 여러번 주고받을 수 없을 것 같습니다.
 
-지금부터 웹소켓 커맨드를 실행하고 텍스트를 보내겠습니다.
+지금부터 웹소켓 커맨드를 실행하고 텍스트를 보내볼까요?
 
 ```shell
 $ ./wscmd ws://echo.websocket.org/
@@ -64,7 +64,7 @@ $ ./wscmd ws://echo.websocket.org/
 * [url0] ws://echo.websocket.org
 
 $ cmd set hi='hello, world!'
-set hi: hello, world!
++ set hi: hello, world!
   1 items
 
 $ cmd hi
@@ -80,9 +80,9 @@ $ hi
 
 텍스트를 쉽게 보낸 것 같습니까?
 
-서버와 'hello, world!' 텍스트를 주고받는 커맨드 라인 도구를 찾는다면
+서버와 'hello, world!' 텍스트를 주고받는 커맨드 라인 도구를 찾는다면...
 
-당장 웹소켓 커맨드을 쓰는 것이 좋겠습니다. 무료이고 맘에 드실테니까요.
+이제부터 웹소켓 커맨드(wscmd)를 쓰는 것이 좋겠습니다. 무료이고 맘에 드실테니까요.
 
 # 사용법
 
@@ -133,6 +133,8 @@ Goodbye (No Connections)
 
 커맨드는 주고받을 텍스트를 단순하게 만듭니다. 커맨드에 대해 조금 더 알아볼까요?
 
+**팁! get set del는 자주쓰기 때문에 cmd를 생락할 수 있어요.**
+
 ```shell
 1) 커맨드 확인하기
 
@@ -140,21 +142,21 @@ $ cmd
 hi: hello, world!
   1 items
 
-2) 커맨드에서 텍스트 가져오기
+2) hi 커맨드에서 텍스트를 가져와 편집하기
 
-$ cmd get hi
-get hi: hello, world!
+$ get hi
++ get hi: hello, world!
   1 items
 $ cmd 'hello, world!'
-  ^ 프롬프트 편집 위치
+  ^ 처음에 프롬프트 편집 위치
 
-3) 가져온 텍스트를 프롬프트에서 편집하여 hi! 커맨드를 추가하기
+3) 가져온 텍스트를 편집하여 새로운 hi! 커맨드 만들기
 
-$ cmd get hi
-get hi: hello, world!
+$ get hi
++ get hi: hello, world!
   1 items
 $ cmd set hi! 'I said, hello world!'
-      ^ 프롬프트 편집 위치: 'set hi! I said,' 추가
+      ^ 프롬프트를 편집하여 다음을 추가: 'set hi! I said,'
 
 4) 커맨드 확인하기
 
@@ -172,7 +174,7 @@ $ hi hi!
 < [url0] 'I said, hello world!'
 ```
 
-기존 커맨드에서 텍스트를 가져와 편집하고 새로운 커맨드로 추가합니다. hi hi! 커맨드를 한번에 보냈습니다.
+기존 커맨드에서 텍스트를 가져와 편집하고 새로운 커맨드로 추가했습니다. 그리고 hi hi! 커맨드를 한번에 보냈습니다.
 
 ## 응용편
 
@@ -195,9 +197,20 @@ $ cmd hi 'I said' hi!
 < [url0] 'hello, world!'
 < [url0] 'I said'
 < [url0] 'I said, hello world!'
+
+3) 반면에 cmd를 생략하면 텍스트를 보낼 수 없습니다
+
+$ hi 'I said' hi!
+> 'hello, world!'
+? 'I said'
+> 'I said, hello world!'
+< [url0] 'hello, world!'
+< [url0] 'I said, hello world!'
 ```
 
-커맨드를 가져와 텍스트로 보내봅시다. cmd 명령을 생략하고 퀵커맨드(get set del)를 사용할 수 있습니다.
+여러 커맨드를 가져와 한번에 텍스트로 보내봅시다.
+
+**팁! 프롬프트에 붙일 수 있는 텍스트 길이에 제한이 있습니다. 262144 바이트보다 크면 get * 커맨드로 전체 텍스트를 가져와도 일부가 제외됩니다.**
 
 ```shell
 1) 커맨드 확인하기
@@ -207,12 +220,12 @@ hi: hello, world!
 hi!: I said, hello world!
   2 items
 
-2) 커맨드를 와일드카드(별표:*), 이름으로 가져와 텍스트로 보내기
+2) 와일드카드(별표:*)를 이용하여 커맨드에서 텍스트를 가져와 한번에 보내기
 
 $ get hi* hi
-get hi: hello, world!
-get hi!: I said, hello world!
-get hi: hello, world!
++ get hi: hello, world!
++ get hi!: I said, hello world!
++ get hi: hello, world!
 $ cmd 'hello, world!' 'I said, hello world!' 'hello, world!'
   ^ 프롬프트 편집 위치
 > 'hello, world!'
@@ -236,21 +249,25 @@ hi!: I said, hello world!
 2) 커맨드를 삭제하기
 
 $ del hi
-hi: hello, world!
+- hi: hello, world!
   [Y/n]
 
 3) 와일드카드(별표:*)를 이용하여 커맨드를 모두 삭제하기
 
 $ del *
-hi: hello, world!
-hi!: I said, hello world!
+- hi: hello, world!
+- hi!: I said, hello world!
   [Y/n] y
   0 items (deletes 2 items)
 ```
 
 ## 히스토리 확인
 
-history 10 과 같이 커맨드에 카운트를 주고 원하는만큼 확인합니다. history all 커맨드로 전체 히스토리를 확인합니다.
+프롬프트에서 <up> <down> 키를 눌러 히스토리를 위 아래로 넘길 수 있습니다.
+
+history 10 과 같이 커맨드에 카운트를 주고 원하는만큼 히스토리를 확인합니다. history all 커맨드로 전체 히스토리를 확인합니다.
+
+**팁! history 커맨드에 카운트를 생략하면 기본값은 20개 입니다.**
 
 ```shell
 $ history
@@ -296,20 +313,20 @@ $ url
 <tab>키를 한번 눌러 커맨드를 자동완성합니다. <tab><tab>키를 두번 눌러 자동완성 커맨드를 볼 수 있습니다.
 
 ```shell
-$ history
+$ his
      ^ <tab> his -> history
 
 $ hi<tab><tab>
 hi        hi!        history
 ```
 
-<esc>키를 눌러 프롬프트를 삭제합니다. 커맨드에서 텍스트를 가져오고 <esc>키를 눌러 프롬프트를 삭제합니다
+<esc>키를 눌러 프롬프트를 삭제합니다. 커맨드에서 텍스트를 가져오고 <esc>키를 눌러 프롬프트를 삭제해봅시다.
 
 ```shell
 $ get hi* hi
-get hi: hello, world!
-get hi!: I said, hello world!
-get hi: hello, world!
++ get hi: hello, world!
++ get hi!: I said, hello world!
++ get hi: hello, world!
 $ cmd 'hello, world!' 'I said, hello world!' 'hello, world!'
   ^ 프롬프트 편집 위치
   ^ <esc>키를 눌러 프롬프트를 삭제
@@ -447,7 +464,7 @@ modules: "js-yaml": "^4.1.0", "ws": "^8.6.0", "yargs": "^17.4.1"
 
 1) 다수의 웹소켓 연결을 관리하고 (url set/get/add/del/open/close)
 2) 연결을 선택하여 커맨드를 주고받으며 (url sel/all)
-3) 주고받을시 텍스트를 원하는대로 바꿀 수 있습니다 (${epoch,ts,uid,seq,rand,param}, $delay and --parameters)
+3) 주고받을시 텍스트를 원하는대로 바꿀 수 있습니다 (${epoch,ts,uid,seq,rand,param} and --parameters, $delay)
 
 ## v3.0 (먼 계획)
 
