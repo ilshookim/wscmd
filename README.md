@@ -86,7 +86,7 @@ $ hi
 
 # 사용법
 
-연결할 웹소켓 서버가 없으면 도움말을 보여줍니다.
+접속할 URL 없이 웹소켓 커맨드를 실행하면 도움말을 보여줍니다.
 
 ```shell
 $ ./wscmd
@@ -157,6 +157,8 @@ $ get hi
   1 items
 $ cmd set hi! 'I said, hello world!'
       ^ 프롬프트를 편집하여 다음을 추가: 'set hi! I said,'
++ set hi!: I said, hello world!
+  2 items
 
 4) 커맨드 확인하기
 
@@ -174,7 +176,7 @@ $ hi hi!
 < [url0] 'I said, hello world!'
 ```
 
-기존 커맨드에서 텍스트를 가져와 편집하고 새로운 커맨드로 추가했습니다. 그리고 hi hi! 커맨드를 한번에 보냈습니다.
+기존 커맨드에서 텍스트를 가져와 편집하고 새로운 커맨드로 추가했습니다. 그리고 두개의 hi hi! 커맨드를 한번에 보냈습니다.
 
 ## 응용편
 
@@ -263,7 +265,7 @@ $ del *
 
 ## 히스토리 확인
 
-프롬프트에서 <up> <down> 키를 눌러 히스토리를 위 아래로 넘길 수 있습니다.
+프롬프트에서 위, 아래 키를 눌러 히스토리를 위 아래로 넘길 수 있습니다.
 
 history 10 과 같이 커맨드에 카운트를 주고 원하는만큼 히스토리를 확인합니다. history all 커맨드로 전체 히스토리를 확인합니다.
 
@@ -297,7 +299,11 @@ $
 
 ## 접속현황 확인하기
 
-접속할 서버를 여러개 주고 웹소켓 커맨드를 실행할 수 있습니다. url, ll, ls 커맨드로 URL 현황을 확인합니다.
+다수의 접속할 URL을 한번에 주고 웹소켓 커맨드를 실행할 수 있습니다.
+
+url, ll, ls 커맨드로 URL 현황을 확인합니다.
+
+**팁! URL 현황에서 +표시는 온라인을 나타내고 -표시는 오프라인를 나타냅니다**
 
 ```shell
 $ ./wscmd wss://locallhost:9511/topics wss://localhost:9521/topics
@@ -328,8 +334,10 @@ $ get hi* hi
 + get hi!: I said, hello world!
 + get hi: hello, world!
 $ cmd 'hello, world!' 'I said, hello world!' 'hello, world!'
-  ^ 프롬프트 편집 위치
-  ^ <esc>키를 눌러 프롬프트를 삭제
+  ^ 1) 프롬프트 편집 위치
+  ^ 2) <esc>키를 눌러 프롬프트를 삭제
+$ 
+  ^ 3) 프롬프트가 삭제됨
 ```
 
 전체화면을 지웁니다.
@@ -360,22 +368,24 @@ Goodbye (No Saving)
 
 # 프로젝트 활용법
 
-프로젝트마다 커맨드, 히스토리를 별도로 관리합니다.
+프로젝트마다 커맨드, 히스토리를 별도로 관리해봅시다.
 
 웹소켓 커맨드를 실행할 때 프로젝트 이름만 지정하면 됩니다.
 
-프로젝트 이름을 지정하면 이전 커맨드와 히스토리를 모두 복원하여 마지막 상태에서 다시 작업을 시작할 수 있습니다.
+```shell
+$ ./wscmd --prj=echo ws://echo.websocket.org
+```
+
+프로젝트 이름을 지정하면 이전 커맨드와 히스토리를 모두 복원하여 마지막 작업하던 상태에서 다시 시작할 수 있습니다.
 
 예컨대 프로젝트 이름을 --prj=echo 라고 지정한 작업은 종료시 echo-command, echo-history에 보관합니다.
 
-보관된 파일은 직접 열고 수정할 수 있습니다.
-
 ```shell
-$ ./wscmd --prj=echo ws://echo.websocket.org
-
 % vi echo-command
 % vi echo-history
 ```
+
+보관된 파일은 직접 열고 편리하게 수정할 수 있습니다.
 
 ## ECHO 서버 예시
 
@@ -421,23 +431,29 @@ wscmd 1.0.0 - copyright (c) 2022 websocket command, written by ilshookim
 < [url0] open wss://localhost:9511/topics
 < [url0] {"command":"welcome","pid":5429,"uid":"JkzOa-0i4t","path":"/topics","latest":{"epoch":1652214743205,"ts":"2022-05-11 05:32:23.205"}}
 
-$ cmd '{"command":"subscribe","topic":"/myhome/grandfloor/+room/temperature"}'
+$ cmd set sub+ {"command":"subscribe","topic":"/myhome/grandfloor/+room/temperature"}
+$ cmd set sub# {"command":"subscribe","topic":"/myhome/grandfloor/#"}
+$ cmd set pub-kitchen {"command":"publish","topic":"/myhome/grandfloor/kitchen/temperature","message":"25 degree"}
+# cmd set pub-bedroom-on {"command":"publish","topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree","autoDelete": true}
+# cmd set pub-bedroom-off {"command":"publish","topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree","autoDelete": false}
+
+$ sub+
 > {"command":"subscribe","topic":"/myhome/grandfloor/+room/temperature"}
 < [url0] {"pattern":"/myhome/grandfloor/+room/temperature","matches":{"room":"kitchen"},"uid":"2hB9kPuzgp","state":"permanent","ts":"2022-05-11 05:32:23.205","epoch":1652214743205,"topic":"/myhome/grandfloor/kitchen/temperature","message":"25 degree"}
 
-$ cmd '{"command":"subscribe","topic":"/myhome/grandfloor/#"}'
+$ sub#
 > {"command":"subscribe","topic":"/myhome/grandfloor/#"}
 < [url0] {"pattern":"/myhome/grandfloor/#","uid":"2hB9kPuzgp","state":"permanent","ts":"2022-05-11 05:32:23.205","epoch":1652214743205,"topic":"/myhome/grandfloor/kitchen/temperature","message":"25 degree"}
 
-$ cmd '{"command":"publish","topic":"/myhome/grandfloor/kitchen/temperature","message":"25 degree"}'
+$ pub-kitchen
 > {"command":"publish","topic":"/myhome/grandfloor/kitchen/temperature","message":"25 degree"}
 < [url0] {"pattern":"/myhome/grandfloor/#","uid":"AkAhs5ne2x","state":"permanent","ts":"2022-05-12 23:17:02.687","epoch":1652365022687,"topic":"/myhome/grandfloor/kitchen/temperature","message":"25 degree"}
 
-$ cmd '{"command":"publish","topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree","autoDelete": true}'
+$ pub-bedroom-on
 > {"command":"publish","topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree","autoDelete": true}
 < [url0] {"pattern":"/myhome/grandfloor/#","uid":"1Qv1YRqMIJ","state":"ephemeral","ts":"2022-05-12 23:17:25.861","epoch":1652365045861,"topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree"}
 
-$ cmd '{"command":"publish","topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree","autoDelete": false}'
+$ pub-bedroom-off
 > {"command":"publish","topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree","autoDelete": false}
 < [url0] {"pattern":"/myhome/grandfloor/#","uid":"bK4Jma2dS0","state":"permanent","ts":"2022-05-12 23:17:48.364","epoch":1652365068364,"topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree"}
 

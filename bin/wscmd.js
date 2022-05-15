@@ -32,8 +32,10 @@ const configure = {
   name: `bin`,
   // 버전
   version: `1.0.0`,
+  // 저작권
+  copyright: `copyright (c) 2022 websocket command`,
   // 작성자
-  written: `copyright (c) 2022 websocket command, written by ilshookim`,
+  written: `written by ilshookim`,
   // 실행파일 이름
   execute: `wscmd`,
   // 실행 경로
@@ -81,7 +83,9 @@ const constants = {
   // 모듈 경로: bin/wscmd
   name: `${Path.join(configure.name, Path.basename(module.filename))}`,
   // 환영 메시지
-  welcome: `${configure.execute} ${configure.version} - ${configure.written}\n`,
+  welcome: `${configure.execute} ${configure.version} - ${configure.copyright}, ${configure.written}\n`,
+  // 전체화면을 지운후에 환영 메시지
+  simpleWelcome: `${configure.execute} ${configure.version} - ${configure.copyright}\n`,
   // 예약어 목록
   reserved: `help history cmd get set del clear exit exit!`,
   // 안녕 메시지
@@ -96,6 +100,8 @@ const constants = {
   showHistorySize: 20,
   // 최대 프롬프트 제한수
   maxPromptLimit: 262144,
+  // 전체화면을 지운후에 URL 현황을 출력
+  showUrlWhenClear: false,
   // 프롬프트 형식
   prompt: `$ `,
 };
@@ -489,9 +495,9 @@ function onPrompt(line) {
     // 커서 아래의 화면을 삭제
     Prompt.clearScreenDown(process.stdout);
     // 환영 메시지를 출력
-    console.log(constants.welcome);
-    // URL 현황을 출력
-    onUrl();
+    console.log(constants.simpleWelcome);
+    // 전체화면을 지운후에 URL 현황을 출력
+    if (constants.showUrlWhenClear) onUrl();
     // 프롬프트를 출력
     render();
   }
