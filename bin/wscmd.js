@@ -24,6 +24,7 @@ const Path = require(`path`);
 const Yaml = require(`js-yaml`);
 const Yargs = require(`yargs`);
 const Readline = require(`readline`);
+const [Parser, Prompt] = [Yargs, Readline];
 
 // 환경
 const configure = {
@@ -180,8 +181,8 @@ let connections = {};
 //
 // 프로그램을 실행합니다 /NODEJS 런타임에서 호출하면 자동으로 run() 실행/
 //
-const letsRunWhenNodeRuntime = configure.node;
-if (letsRunWhenNodeRuntime) run();
+const whenNodeRuntime = configure.node;
+if (whenNodeRuntime) run();
 
 // 프로그램을 실행
 function run() {
@@ -190,7 +191,7 @@ function run() {
 
   // 프로그램 인자를 구문분석합니다
   const helpOff = false;
-  const param = Yargs.help(helpOff).parse(process.argv.slice(2));
+  const param = Parser.help(helpOff).parse(process.argv.slice(2));
   const parse = { ...param, argv: param._, seq: 0 };
 
   // 프로그램 인자에서 접속할 URL 정보를 구분합니다
@@ -271,7 +272,7 @@ function letsPrompts() {
   }
 
   // 새로운 프롬프트를 시작합니다
-  prompt = Readline.createInterface({
+  prompt = Prompt.createInterface({
     // 입력라인에서 입출력을 활용
     input: process.stdin,
     output: process.stdout,
@@ -361,10 +362,10 @@ function letsKeys() {
     if (whenClearPrompt) {
       // 터미널에서 입력하던 라인을 삭제
       const [clearLineLeft, clearLineRight, clearLineWhole] = [-1, 1, 0];
-      Readline.clearLine(process.stdout, clearLineWhole);
+      Prompt.clearLine(process.stdout, clearLineWhole);
       // 커서 위치를 처음으로 이동
       const [cursorToX, cursorToY] = [0, undefined];
-      Readline.cursorTo(process.stdout, cursorToX, cursorToY);
+      Prompt.cursorTo(process.stdout, cursorToX, cursorToY);
       // 입력한 라인을 삭제
       prompt.line = '';
       // 프롬프트를 출력
@@ -386,7 +387,7 @@ function onPrompt(line) {
   // - option add 100                     { _: [ 'add', 100 ], cmd: 'option', sub: 'add' }
   // - option add 100 --multiLine=true    { _: [ 'add', 100 ], multiLine: 'true', 'cmd': 'option', 'sub': 'add' }
   const helpOff = false;
-  const param = Yargs.help(helpOff).parse(line);
+  const param = Parser.help(helpOff).parse(line);
   const parse = { ...param, params: param._, raw: [...param._], cmd: param._.shift(), sub: param._[0] };
 
   // 프롬프트로 예약된 커맨드와 일반 커맨드를 처리합니다
@@ -484,9 +485,9 @@ function onPrompt(line) {
   function onCmdClear() {
     // 커서를 모서리로 이동
     const [cursorToX, cursorToY] = [0, 0];
-    Readline.cursorTo(process.stdout, cursorToX, cursorToY);
+    Prompt.cursorTo(process.stdout, cursorToX, cursorToY);
     // 커서 아래의 화면을 삭제
-    Readline.clearScreenDown(process.stdout);
+    Prompt.clearScreenDown(process.stdout);
     // 환영 메시지를 출력
     console.log(constants.welcome);
     // URL 현황을 출력
@@ -832,10 +833,10 @@ function render(message = undefined, cursor = true, preserveCursor = true) {
   if (prompt) {
     // 프롬프트와 입력하던 라인을 제거
     const [clearLineLeft, clearLineRight, clearLineWhole] = [-1, 1, 0];
-    Readline.clearLine(process.stdout, clearLineWhole);
+    Prompt.clearLine(process.stdout, clearLineWhole);
     // 커서 위치를 처음으로 이동
     const [cursorToX, cursorToY] = [0, undefined];
-    Readline.cursorTo(process.stdout, cursorToX, cursorToY);
+    Prompt.cursorTo(process.stdout, cursorToX, cursorToY);
     // /메시지가 있으면/ 메시지를 출력
     if (message) console.log(message);
     // /입력하던 라인이 있으면/ 입력하던 라인을 다시 출력
