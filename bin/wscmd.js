@@ -572,15 +572,15 @@ function onCmd(parse, quick = true) {
           i++;
         }
         // set이 가능한지 확인
-        const whenValidCmdAndPayload = !empty(key) && !empty(value);
-        if (whenValidCmdAndPayload) {
+        const shouldSet = !empty(key) && !empty(value);
+        if (shouldSet) {
           // 커맨드를 추가
           command[key] = disclosureQuotes(value);
           // 지정한 커맨드를 출력
           console.log(`+ set ${key}: ${command[key]}`);
           whenSet = true;
         } else {
-          console.log(`- set ${key}: undefined`);
+          console.log(`- set ${key}: ${value}`);
         }
       }
       if (whenSet) console.log(`  ${items(command)} items`);
