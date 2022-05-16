@@ -1,14 +1,18 @@
 npm run build-all
-rm wscmd
 
-cp wscmd-macos wscmd
+mkdir release
+cd release
+
+cp ../wscmd-macos wscmd
 zip wscmd-macos.zip wscmd
 rm wscmd
 
-cp wscmd-linux wscmd
+cp ../wscmd-linux wscmd
 zip wscmd-linux.zip wscmd
 rm wscmd
 
-cp wscmd-win.exe wscmd.exe
+cp ../wscmd-win.exe wscmd.exe
 zip wscmd-win.zip wscmd.exe
 rm wscmd.exe
+
+ls -lh

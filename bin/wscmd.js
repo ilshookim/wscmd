@@ -13,7 +13,7 @@
   웹소켓 서버에 접속하고 커맨드 입출력 기능을 제공하는 websocket command
 
   1. WS/WSS URL 멀티접속 지원
-  2. 터미널 입력과 자동완성 지원
+  2. 프롬프트 입출력과 자동완성 지원
   3. 커맨드와 히스토리 파일을 지원
 */
 
@@ -30,20 +30,20 @@ const [Parser, Prompt] = [Yargs, Readline];
 const configure = {
   // 경로 구분
   name: `bin`,
-  // 버전
-  version: `1.0.0`,
-  // 저작권
-  copyright: `copyright (c) 2022 websocket command`,
-  // 작성자
-  written: `written by ilshookim`,
   // 실행파일 이름
   execute: `wscmd`,
-  // 실행 경로
-  pwdPath: process.env.PWD ? process.env.PWD : process.cwd(),
-  // 노드 런타임을 구분
-  node: equals(require.main, module),
+  // 버전
+  version: `1.0.0`,
+  // 작성자
+  written: `written by ilshookim`,
+  // 저작권
+  copyright: `copyright (c) 2022 websocket command`,
   // 패키지를 구분
   pkg: process.pkg ? true : false,
+  // 노드 런타임을 구분
+  node: equals(require.main, module),
+  // 실행 경로
+  pwdPath: process.env.PWD ? process.env.PWD : process.cwd(),
 };
 
 // 함수
@@ -87,7 +87,7 @@ const constants = {
   // 전체화면을 지운후에 환영 메시지
   simpleWelcome: `${configure.execute} ${configure.version} - ${configure.copyright}\n`,
   // 예약어 목록
-  reserved: `help history cmd get set del clear exit exit!`,
+  reserved: `cmd get set del history clear exit exit! help`,
   // 안녕 메시지
   goodbye: `Goodbye`,
   // 커맨드 파일명
@@ -117,7 +117,7 @@ const kUsagePkg =
 
 const kOptions =
   `  options: --cmd=command --history=history   - change command and history filename\n` +
-  `           --prj=cloud-topics                - change at once command and history filename by project name\n\n`;
+  `           --prj=project-name                - change at once command and history filename by project name\n\n`;
 
 const kKeys =
   `  > <esc>                                    - clear prompt\n` +
@@ -169,14 +169,14 @@ module.exports = {
 // - 저장하고 종료하는지: 저장하려면 true
 let shouldSavingWhenExit = true;
 // - 프롬프트가 교체중인지: 교체중이면 true
-//   히스토리를 삭제하면 히스토리를 다시 지정하여 프롬프트를 다시 시작하게됨
+// - 히스토리를 일부를 삭제하면 히스토리를 다시 지정하여 프롬프트를 재시작이 필요
 let shouldReplacePrompt = false;
 // - 프롬프트를 미리 처리했는지: 다음 프롬프트 출력을 생략하려면 true
 let shouldRenderPrompt = true;
 
 // 변수를 정의
 // - 프롬프트
-let prompt;
+let prompt = null;
 // - 커맨드 목록
 let command = {};
 // - 히스토리 목록
@@ -226,19 +226,18 @@ function run() {
 
   // 연결이 한 개도 없으면 프로그램을 종료합니다
   const nothingConnections = zero(items(connections));
-  // 한줄을 띄움
-  if (!nothingConnections) console.log(``);
-  // 프로그램을 종료
-  else {
+  if (nothingConnections) {
     // 사용방법을 출력
     console.log(kUsage)
     // 프로그램을 종료
     goodbye(`${constants.goodbye} (No Connections)`);
   }
+  // 한줄을 띄움
+  console.log(``);
 
   // 커맨드 파일을 로드합니다
-  const commandFile = Fs.existsSync(spec.commandFile);
-  if (commandFile) {
+  const whenExistsCommandFile = Fs.existsSync(spec.commandFile);
+  if (whenExistsCommandFile) {
     // 커맨드 파일을 로드
     const yaml = Fs.readFileSync(spec.commandFile);
     // YAML 형식을 JSON 형식으로 변환
@@ -246,8 +245,8 @@ function run() {
   }
 
   // 히스토리 파일을 로드합니다
-  const historyFile = Fs.existsSync(spec.historyFile);
-  if (historyFile) {
+  const whenExistsHistoryFile = Fs.existsSync(spec.historyFile);
+  if (whenExistsHistoryFile) {
     // 히스토리 파일을 로드
     const text = Fs.readFileSync(spec.historyFile).toString();
     // TEXT 형식을 배열로 변환하고 역순으로 변경하고 빈 라인을 제거
@@ -338,24 +337,15 @@ function letsPrompts() {
     // 예약어를 배열로 작성
     const reserved = constants.reserved.split(' ');
     // 예약어와 커맨드를 하나로 합침
-    const addCommand = true;
-    const complete = addCommand ? [ ...reserved, ...Object.keys(command) ] : [ ...reserved ];
-    // 입력한 커맨드를 배열로 작성
+    const completions = [...reserved, ...Object.keys(command)];
+    // 입력한 커맨드를 배열로 변경
     const commands = line.split(' ');
-    // 히트한 커맨드를 배열로 작성
-    const hits = complete.filter((c) => c.startsWith(commands.slice(-1)));
-    // 입력한 커맨드가 히트하였으면 자동완성
-    const whenAutoCompletion = (items(commands) > 1) && (equals(items(hits), 1));
-    if (whenAutoCompletion) {
-      // 커맨드를 자동완성하고
-      const lastCmd = commands.slice(-1)[0];
-      const pos = items(lastCmd);
-      prompt.line = line.slice(0, -pos).concat(hits[0]);
-      // 커서의 위치를 자동완성한 끝으로 이동
-      prompt.cursor = items(prompt.line) + 1;
-    }
-    // 입력한 커맨드와 함께 히트한 경우 히트한 배열, 그렇지 않으면 커맨드 집합을 반환
-    return [items(hits) ? hits.sort() : complete.sort(), line];
+    // 입력한 마지막 커맨드를 확인
+    const lastCmd = commands.slice(-1)[0];
+    // 입력한 마지막 커맨드에 맞는 자동완성할 커맨드를 검색
+    const hits = completions.filter(completion => completion.startsWith(lastCmd));
+    // 자동완성할 커맨드와 함께 입력한 마지막 커맨드를 반환
+    return [items(hits) ? hits : completions, lastCmd];
   }
 }
 
@@ -366,7 +356,7 @@ function letsKeys() {
     // 입력한 라인에 삭제가 필요한지 확인
     const whenClearPrompt = key && equals(key.name, `escape`) && prompt && !empty(prompt.line);
     if (whenClearPrompt) {
-      // 터미널에서 입력하던 라인을 삭제
+      // 프롬프트에서 입력하던 라인을 삭제
       const [clearLineLeft, clearLineRight, clearLineWhole] = [-1, 1, 0];
       Prompt.clearLine(process.stdout, clearLineWhole);
       // 커서 위치를 처음으로 이동
@@ -388,10 +378,10 @@ function onPrompt(line) {
 
   // 라인에서 커맨드 예시와 구분분석 결과
   // - (enter)                            { _: [], cmd: undefined, sub: undefined }
-  // - option                             { _: [], cmd: 'option', sub: undefined }
-  // - option add                         { _: [ 'add' ], cmd: 'option', sub: 'add' }
-  // - option add 100                     { _: [ 'add', 100 ], cmd: 'option', sub: 'add' }
-  // - option add 100 --multiLine=true    { _: [ 'add', 100 ], multiLine: 'true', 'cmd': 'option', 'sub': 'add' }
+  // - history                            { _: [], cmd: 'history', sub: undefined }
+  // - history list                       { _: [ 'list' ], cmd: 'history', sub: 'list' }
+  // - history 10                         { _: [ 10 ], cmd: 'history', sub: '10' }
+  // - cmd get hi hi! --multiLine=true    { _: [ 'hi', 'hi!' ], multiLine: 'true', 'cmd': 'cmd', 'sub': 'get' }
   const helpOff = false;
   const param = Parser.help(helpOff).parse(line);
   const parse = { ...param, params: param._, raw: [...param._], cmd: param._.shift(), sub: param._[0] };
@@ -472,10 +462,8 @@ function onPrompt(line) {
       for (const cmd of parse.raw) if (!empty(cmd)) {
         // 커맨드에 있는지 확인
         let payload = empty(command[cmd]) ? null : command[cmd];
-        // 알수없는 커맨드로 표시
-        if (!payload) render(`? ${cmd}`)
-        // 유효한 커맨드는 페이로드를 전송
-        else {
+        // 알수없는 커맨드로 표시, 또는 유효한 커맨드는 페이로드를 전송
+        if (!payload) render(`? ${cmd}`); else {
           // 감싸진 ' 또는 " 를 문자열에서 벗김
           payload = disclosureQuotes(payload);
           // 커맨드를 터미널에 표시
@@ -523,22 +511,18 @@ function onCmd(parse, quick = true) {
       let [count, text] = [0, ``];
       // 가져올 커맨드를 확인
       for (const wildcard of parse.params) if (!empty(wildcard)) {
-        // 전체 커맨드에서 가져올 커맨드를 확인
-        for (const [cmd, payload] of Object.entries(command)) {
-          // 커맨드를 검색
-          if (search(cmd, wildcard)) {
-            // 텍스트 길이가 프롬프트 범위를 초과하는지 확인
-            const whenOverLimit = text.length + payload.length > constants.maxPromptLimit;
-            // 범위를 벗어난 커맨드를 출력
-            if (whenOverLimit) console.log(`- get ${cmd}: ${payload}`);
-            else {
-              // 합쳐질 커맨드를 출력
-              console.log(`+ get ${cmd}: ${payload}`);
-              // 텍스트를 합침
-              if (!empty(payload)) text += `'${payload}' `;
-              // 텍스트를 합친 카운드
-              count++;
-            }
+        // 가져올 커맨드를 전체 커맨드에서 검색
+        for (const [cmd, payload] of Object.entries(command)) if (search(cmd, wildcard)) {
+          // 텍스트 길이가 프롬프트 범위를 초과하는지 확인
+          const whenOverLimit = text.length + payload.length > constants.maxPromptLimit;
+          // 범위를 벗어난 커맨드를 출력
+          if (whenOverLimit) console.log(`- get ${cmd}: ${payload}`); else {
+            // 합쳐질 커맨드를 출력
+            console.log(`+ get ${cmd}: ${payload}`);
+            // 텍스트를 합침
+            if (!empty(payload)) text += `'${payload}' `;
+            // 텍스트를 합친 카운드
+            count++;
           }
         }
       }
@@ -571,16 +555,15 @@ function onCmd(parse, quick = true) {
           value = parse.params[i + 1];
           i++;
         }
-        // set이 가능한지 확인
+        // set 가능여부를 확인
         const shouldSet = !empty(key) && !empty(value);
-        if (shouldSet) {
+        // set 출력
+        if (!shouldSet) console.log(`- set ${key}: ${value}`); {
           // 커맨드를 추가
           command[key] = disclosureQuotes(value);
           // 지정한 커맨드를 출력
           console.log(`+ set ${key}: ${command[key]}`);
           whenSet = true;
-        } else {
-          console.log(`- set ${key}: ${value}`);
         }
       }
       if (whenSet) console.log(`  ${items(command)} items`);
@@ -592,13 +575,11 @@ function onCmd(parse, quick = true) {
       // 삭제 대상인 커맨드를 검토
       const deletes = [];
       for (const wildcard of parse.params) {
-        for (const [cmd, payload] of Object.entries(command)) {
-          // 삭제 대상인 커맨드인지 확인
-          if (search(cmd, wildcard)) {
-            // 커맨드를 출력하여 검토
-            console.log(`- ${cmd}: ${payload}`);
-            deletes.push(cmd);
-          }
+        // 삭제 대상인 커맨드인지 검색
+        for (const [cmd, payload] of Object.entries(command)) if (search(cmd, wildcard)) {
+          // 커맨드를 출력하여 검토
+          console.log(`- ${cmd}: ${payload}`);
+          deletes.push(cmd);
         }
       }
       // 검토한 항목이 있으면 삭제를 질의
@@ -688,12 +669,12 @@ function onHistory(parse) {
       // 히스토리를 복사하고
       let remain = history.slice().reverse();
       // 삭제 대상인 히스토리를 검토
-      const noDelete = true;
+      const shouldNotDelete = true;
       for (const wildcard of parse.params) remain = remain.filter(cmd => {
         // 일치하면 제거하고
         if (search(cmd, wildcard)) { console.log(cmd); }
         // 일치하지 않은 항목을 남김
-        else return noDelete;
+        else return shouldNotDelete;
       });
       // 검토한 항목이 있으면 삭제를 질의
       const deletes = items(history) - items(remain);
@@ -903,7 +884,7 @@ function questionYesNo(question, onYes, onNo) {
   const whenHaveQuestion = prompt && !empty(question);
   if (whenHaveQuestion) prompt.question(question, (answer) => {
     // 삭제를 결정
-    const whenYes = equals(answer.toLowerCase(), `y`);
+    const whenYes = equals(answer.trim().toLowerCase(), `y`);
     // Yes 처리
     if (whenYes && onYes) onYes();
     // No 처리

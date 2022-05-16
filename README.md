@@ -432,9 +432,16 @@ wscmd 1.0.0 - copyright (c) 2022 websocket command, written by ilshookim
 
 $ cmd set sub+ {"command":"subscribe","topic":"/myhome/grandfloor/+room/temperature"}
 $ cmd set sub# {"command":"subscribe","topic":"/myhome/grandfloor/#"}
+$ cmd set sub-kitchen {"command":"subscribe","topic":"/myhome/grandfloor/kitchen/temperature"}
+$ cmd set sub-bedroom {"command":"subscribe","topic":"/myhome/grandfloor/bedroom/temperature"}
+$ cmd set unsub+ {"command":"unsubscribe","topic":"/myhome/grandfloor/+room/temperature"}
+$ cmd set unsub# {"command":"unsubscribe","topic":"/myhome/grandfloor/#"}
+$ cmd set unsub-kitchen {"command":"unsubscribe","topic":"/myhome/grandfloor/kitchen/temperature"}
+$ cmd set unsub-bedroom {"command":"unsubscribe","topic":"/myhome/grandfloor/bedroom/temperature"}
 $ cmd set pub-kitchen {"command":"publish","topic":"/myhome/grandfloor/kitchen/temperature","message":"25 degree"}
-$ cmd set pub-bedroom-on {"command":"publish","topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree","autoDelete": true}
-$ cmd set pub-bedroom-off {"command":"publish","topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree","autoDelete": false}
+$ cmd set pub-kitchen-reply {"command":"publish","topic":"/myhome/grandfloor/kitchen/temperature","message":"25 degree","reply":true}
+$ cmd set pub-bedroom-on {"command":"publish","topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree","autoDelete":true}
+$ cmd set pub-bedroom-off {"command":"publish","topic":"/myhome/grandfloor/bedroom/temperature","message":"28 degree","autoDelete":false}
 
 $ sub+
 > {"command":"subscribe","topic":"/myhome/grandfloor/+room/temperature"}
