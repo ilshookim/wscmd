@@ -76,13 +76,9 @@ $ hi
 < [url0] 'hello, world!'
 ```
 
-텍스트를 커맨드로 만들고 두번 보냈습니다.
+텍스트를 hi 커맨드로 만들고 두번 보내봤습니다.
 
-텍스트를 쉽게 보낸 것 같습니까?
-
-서버와 'hello, world!' 텍스트를 주고받는 커맨드 라인 도구를 찾는다면...
-
-이제부터 웹소켓 커맨드(wscmd)를 쓰는 것이 좋겠습니다. 무료이고 맘에 드실테니까요.
+텍스트를 쉽게 보낸 것 같습니까? 간단한 전문을 주고받기때 쉽고 편리하게 활용할 수 있지 않을까요?
 
 # 사용법
 
@@ -467,7 +463,7 @@ $ exit
 Goodbye
 ```
 
-고맙습니다 - I loved programming alone. Written by ilshookim.
+고맙습니다 - I loved programming alone. Written by [ilshookim](ilshookim@gmail.com).
 
 # 계획
 
@@ -499,3 +495,9 @@ modules: "js-yaml": "^4.1.0", "ws": "^8.6.0", "yargs": "^17.4.1"
 # 라이선스
 
 Dual License: GPLv3 (The GNU General Public License v3.0) or Licensed under Commercial
+
+누구나 무료로 실행파일을 다운로드 받고 사용할 수 있습니다.
+
+수정한 소스를 공개하면 누구나 무료로 소스를 사용하실 수 있습니다.
+
+만약에 소스 공개가 어려운 기업이면 별도로 문의를 주세요.

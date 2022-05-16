@@ -1,1 +1,7 @@
-exit
+cmd
+ll
+sub+ pub-kitchen unsub+ pub-kitchen
+pub-kitchen
+sub+ sub# pub-kitchen unsub+ unsub# pub-kitchen
+clear
+cmd
