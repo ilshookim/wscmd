@@ -3,8 +3,7 @@
  * 1 들여쓰기: 스페이스 2 고정, UTF8 NoBOM, 라인 주석은 23 또는 53 컬럼에서 남김
  * 2 문자포맷: 백틱을 사용 `${expr}`
  * 3 정의방식: 상수 const, 변수 let, 항상 세미콜론을 사용 (예외처리 try-catch, 함수 정의에서 제외)
- * 4 로그레벨: none > error > warn > info > http > verbose > debug > silly
- * 5 작성순서: 포함, 환경, 함수, 상수, 모듈, 노출, 프로그램 정의, 함수 정의 순으로 작성
+ * 4 작성순서: 포함, 환경, 함수, 상수, 스펙, 모듈, 프로그램 정의, 함수 정의 순으로 작성
  */
 
 `use strict`;
@@ -148,16 +147,19 @@ const kUsage =
 const kHelp =
   `\n${kUsage}`;
 
-// 모듈
+// 스펙
 const spec = {
   ...constants,
   configure: configure,
 };
 
-// 노출
+// 모듈
+// - 환경, 상수과 스펙을 외부에서 사용
+// - 함수를 외부에서 사용
 module.exports = {
   ...spec,
   ...functions,
+  init: init,
   run: run,
 };
 
@@ -185,12 +187,19 @@ let history = [];
 let connections = {};
 
 //
-// 프로그램을 실행합니다 /NODEJS 런타임에서 호출하면 자동으로 run() 실행/
+// 모듈 초기화는 자동으로 실행
 //
-const whenNodeRuntime = configure.node;
-if (whenNodeRuntime) run();
+const shouldInitialAndRunAutomatically = true;
+init(shouldInitialAndRunAutomatically);
 
-// 프로그램을 실행
+// 모듈을 초기화
+function init(initial = false, reload = false) {
+  // NODEJS 런타임에서 호출하면 자동으로 모듈을 실행합니다
+  const whenNodeRuntime = initial && configure.node;
+  if (whenNodeRuntime) run();
+}
+
+// 모듈을 실행
 function run() {
   // 환영 메시지를 출력합니다
   console.log(constants.welcome);
@@ -225,8 +234,8 @@ function run() {
   onUrl(statesOff);
 
   // 연결이 한 개도 없으면 프로그램을 종료합니다
-  const nothingConnections = zero(items(connections));
-  if (nothingConnections) {
+  const whenNoConnections = zero(items(connections));
+  if (whenNoConnections) {
     // 사용방법을 출력
     console.log(kUsage)
     // 프로그램을 종료
@@ -335,9 +344,9 @@ function letsPrompts() {
   // - line: 프롬프트에서 받은 문자열
   function onPromptAutoComplete(line) {
     // 예약어를 배열로 작성
-    const reserved = constants.reserved.split(' ');
+    const reserves = constants.reserved.split(' ');
     // 예약어와 커맨드를 하나로 합침
-    const completions = [...reserved, ...Object.keys(command)];
+    const completions = [...reserves, ...Object.keys(command).sort()];
     // 입력한 커맨드를 배열로 변경
     const commands = line.split(' ');
     // 입력한 마지막 커맨드를 확인
@@ -345,7 +354,8 @@ function letsPrompts() {
     // 입력한 마지막 커맨드에 맞는 자동완성할 커맨드를 검색
     const hits = completions.filter(completion => completion.startsWith(lastCmd));
     // 자동완성할 커맨드와 함께 입력한 마지막 커맨드를 반환
-    return [items(hits) ? hits : completions, lastCmd];
+    const hitsCompletionsAndPartial = [items(hits) ? hits : completions, lastCmd];
+    return hitsCompletionsAndPartial;
   }
 }
 
@@ -452,7 +462,7 @@ function onPrompt(line) {
   shouldRenderPrompt = true;
 
   //
-  // 내부 함수로
+  // 내부 함수
   //
 
   // 일반 커맨드를 처리
@@ -767,7 +777,8 @@ function letsConnections() {
           }
         });
         // 연결이 끊기면 재연결을 하지 않도록 0을 반환
-        return 0;
+        const noReconnection = 0;
+        return noReconnection;
       },
       // 웹소켓에서 메시지를 받음
       function onWebSocketMessage(message) {
@@ -904,13 +915,13 @@ function websocket(http, url, onOpen, onClose, onMessage, onError, onPing, onPon
   let self = { name: `websocket(http, url, ...)`, succeed: false };
   try {
     // 연결을 준비하는 상태
-    if (!http.state) { http.state = `idle`; http.reconnectCount = 0; }
-    else http.reconnectCount++;
+    if (!http.state) { http.state = `idle`; http.reconnects = 0; }
+    else http.reconnects++;
 
     // 재접속 타이머를 삭제
-    if (http.reconnectTimer) {
-      clearTimeout(http.reconnectTimer);
-      http.reconnectTimer = null;
+    if (http.timer) {
+      clearTimeout(http.timer);
+      http.timer = null;
     }
 
     // 웹소켓 서버에 접속하고 HTTP.WS 추가
@@ -937,7 +948,7 @@ function websocket(http, url, onOpen, onClose, onMessage, onError, onPing, onPon
       // 종료 이벤트를 호출하고 재접속
       if (onClose) {
         // 재접속 간격을 확인하고 설정된 간격 후에 재접속을 시도
-        const reconnectInterval = onClose(code, http.url, http.state, http.reconnectCount);
+        const reconnectInterval = onClose(code, http.url, http.state, http.reconnects);
         // 재접속 간격이 0 이거나 null/undefined 이면 재접속을 하지 않음
         if (!zero(reconnectInterval)) http.reconnectTimer = setTimeout(websocket, reconnectInterval,
           http, url, onOpen, onClose, onMessage, onError, onPing, onPong);
