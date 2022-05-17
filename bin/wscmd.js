@@ -187,15 +187,15 @@ let history = [];
 let connections = {};
 
 //
-// 모듈 초기화는 자동으로 실행
+// 모듈 초기화를 자동으로 실행
+// - NODEJS 런타임에서 호출하면 자동으로 run() 함수를 실행합니다
 //
-const shouldInitialAndRunAutomatically = true;
-init(shouldInitialAndRunAutomatically);
+init({initial: true});
 
 // 모듈을 초기화
-function init(initial = false, reload = false) {
-  // NODEJS 런타임에서 호출하면 자동으로 모듈을 실행합니다
-  const whenNodeRuntime = initial && configure.node;
+function init(state = {initial: false, reload: false}) {
+  // NODEJS 런타임에서 호출하면 자동으로 run() 함수를 실행합니다
+  const whenNodeRuntime = state && state.initial && configure.node;
   if (whenNodeRuntime) run();
 }
 
