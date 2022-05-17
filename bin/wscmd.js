@@ -935,7 +935,7 @@ function websocket(http, url, onOpen, onClose, onMessage, onError, onPing, onPon
     ws.on(`open`, function () {
       // 연결된 상태
       http.state = `open`;
-      http.reconnectCount = 0;
+      http.reconnects = 0;
 
       if (onOpen) onOpen(ws);
     });
@@ -950,7 +950,8 @@ function websocket(http, url, onOpen, onClose, onMessage, onError, onPing, onPon
         // 재접속 간격을 확인하고 설정된 간격 후에 재접속을 시도
         const reconnectInterval = onClose(code, http.url, http.state, http.reconnects);
         // 재접속 간격이 0 이거나 null/undefined 이면 재접속을 하지 않음
-        if (!zero(reconnectInterval)) http.reconnectTimer = setTimeout(websocket, reconnectInterval,
+        const whenNeedReconnection = !zero(reconnectInterval);
+        if (whenNeedReconnection) http.timer = setTimeout(websocket, reconnectInterval,
           http, url, onOpen, onClose, onMessage, onError, onPing, onPong);
       }
     });
