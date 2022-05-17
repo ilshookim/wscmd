@@ -340,7 +340,7 @@ function letsPrompts() {
   // 내부 함수
   //
 
-  // 프롬프트에서 커맨드를 자동완성 fixMe@220515 라인 첫머리에서 자동완성한 경우에만 잘 동작하고 두번째, 세번째 커맨드에서는 오동작
+  // 프롬프트에서 커맨드를 자동완성
   // - line: 프롬프트에서 받은 문자열
   function onPromptAutoComplete(line) {
     // 예약어를 배열로 작성
