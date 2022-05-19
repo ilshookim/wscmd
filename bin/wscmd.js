@@ -56,7 +56,7 @@ const functions = {
   // 페이로드를 연결로 보냄
   sender: sender,
   // 터미널에 출력하고 프롬프트를 표시
-  render: render,
+  output: output,
   // 온라인 상태의 연결수를 확인
   online: online,
   // 프로그램을 종료
@@ -99,8 +99,8 @@ const constants = {
   showHistorySize: 20,
   // 최대 프롬프트 제한수
   maxPromptLimit: 262144,
-  // 전체화면을 지운후에 URL 현황을 출력
-  showUrlWhenClear: false,
+  // 한줄띄움
+  newline: ``,
   // 프롬프트 형식
   prompt: `$ `,
 };
@@ -167,30 +167,25 @@ module.exports = {
 // 웹소켓 CLI 구현
 //
 
-// 커맨드와 히스토리 파일이 현재 시점에서 수정이 되었는지 확인
+// 커맨드와 히스토리 파일이 쓰는 시점에서 수정이 되었는지 확인
 const modifications = {
   // 읽은 시점에 시간을 보관
   command: null,
   history: null,
-  // 읽은 시점에 확인
   commandLoaded: function () { this.command = this.time(spec.commandFile) },
   historyLoaded: function () { this.history = this.time(spec.historyFile) },
   // 현재 시점에 파일이 수정되었는지 확인
   commandModified: function () { return this.command && !equals(this.command, this.time(spec.commandFile)); },
   historyModified: function () { return this.history && !equals(this.history, this.time(spec.historyFile)); },
-  whenModified: function () { return this.commandModified() || this.historyModified(); },
+  modified: function () { return this.commandModified() || this.historyModified(); },
   // 파일에서 수정시간을 확인
   time: (file) => Fs.statSync(file).mtime.getTime(),
 };
 
 // 플래그를 정의
-// - 저장하고 종료하는지: 저장하려면 true
-let shouldSavingWhenExit = true;
 // - 프롬프트가 교체중인지: 교체중이면 true
-// - 히스토리를 일부를 삭제하면 히스토리를 다시 지정하여 프롬프트를 재시작이 필요
+// - 히스토리에 일부를 삭제하면 히스토리를 다시 지정하여 프롬프트를 재시작이 필요
 let shouldReplacePrompt = false;
-// - 프롬프트를 미리 처리했는지: 다음 프롬프트 출력을 생략하려면 true
-let shouldRenderPrompt = true;
 
 // 변수를 정의
 // - 프롬프트
@@ -218,7 +213,7 @@ function init(state = {initial: false, reload: false}) {
 // 모듈을 실행
 function run() {
   // 환영 메시지를 출력합니다
-  console.log(constants.welcome);
+  logging(constants.welcome);
 
   // 프로그램 인자를 구문분석합니다
   const helpOff = false;
@@ -241,11 +236,11 @@ function run() {
   if (parse.prj) parse.history = `${parse.prj}-history`;
   spec.commandFile = Path.join(configure.pwdPath, parse.cmd ? parse.cmd : spec.commandFile);
   spec.historyFile = Path.join(configure.pwdPath, parse.history ? parse.history : spec.historyFile);
-  console.log(`  % command=${spec.commandFile}`);
-  console.log(`  % history=${spec.historyFile}`);
-  console.log(``);
+  logging(`  % command=${spec.commandFile}`);
+  logging(`  % history=${spec.historyFile}`);
+  logging(constants.newline);
 
-  // 실행 경로와 URL 현황을 출력합니다
+  // 실행 경로와 URL 현황을 출력합니다 /접속상태는 제외/
   const statesOff = false;
   onUrl(statesOff);
 
@@ -253,13 +248,12 @@ function run() {
   const whenNoConnections = zero(items(connections));
   if (whenNoConnections) {
     // 사용방법을 출력
-    console.log(kUsage)
+    logging(kUsage)
     // 프로그램을 종료
     const saveOff = false;
     goodbye(saveOff);
   }
-  // 한줄을 띄움
-  console.log(``);
+  logging(constants.newline);
 
   // 커맨드 파일을 로드합니다
   const whenExistsCommandFile = Fs.existsSync(spec.commandFile);
@@ -295,6 +289,27 @@ function run() {
   letsPrompts();
 }
 
+// 키입력을 시작합니다
+function letsKeys() {
+  // 프롬프트에서 ESC 키를 눌러 입력한 라인을 삭제
+  process.stdin.on(`keypress`, function onKeyPress(_, key) {
+    // 입력한 라인에 삭제가 필요한지 확인
+    const whenClearPrompt = key && equals(key.name, `escape`) && prompt && !empty(prompt.line);
+    if (whenClearPrompt) {
+      // 프롬프트에서 입력하던 라인을 삭제
+      const [clearLineLeft, clearLineRight, clearLineWhole] = [-1, 1, 0];
+      Prompt.clearLine(process.stdout, clearLineWhole);
+      // 커서 위치를 처음으로 이동
+      const [cursorToX, cursorToY] = [0, undefined];
+      Prompt.cursorTo(process.stdout, cursorToX, cursorToY);
+      // 입력한 라인을 삭제
+      prompt.line = '';
+      // 프롬프트를 출력
+      prompt.prompt();
+    }
+  });
+}
+
 // 프롬프트를 시작
 function letsPrompts() {
   // 이전 프롬프트가 이미 있는지 확인합니다
@@ -328,8 +343,8 @@ function letsPrompts() {
     // 프로그램을 종료를 확인
     const whenProgramExit = !shouldReplacePrompt;
     // 파일이 수정됐으면 저장이 없이 종료, 수정되지 않았으면 저장하고 종료
-    const saveCommandAndHistoryWhenNotModified = modifications.whenModified() ? false : true;
-    if (whenProgramExit) goodbye(saveCommandAndHistoryWhenNotModified);
+    const shouldSaveWhenNotModified = modifications.modified() ? false : true;
+    if (whenProgramExit) goodbye(shouldSaveWhenNotModified);
     // 새로운 프롬프트로 대체를 완료
     shouldReplacePrompt = false;
   });
@@ -360,27 +375,6 @@ function letsPrompts() {
     const hitsCompletionsAndPartial = [items(hits) ? hits : completions, lastCmd];
     return hitsCompletionsAndPartial;
   }
-}
-
-// 키입력을 시작합니다
-function letsKeys() {
-  // 프롬프트에서 ESC 키를 눌러 입력한 라인을 삭제
-  process.stdin.on(`keypress`, function onKeyPress(_, key) {
-    // 입력한 라인에 삭제가 필요한지 확인
-    const whenClearPrompt = key && equals(key.name, `escape`) && prompt && !empty(prompt.line);
-    if (whenClearPrompt) {
-      // 프롬프트에서 입력하던 라인을 삭제
-      const [clearLineLeft, clearLineRight, clearLineWhole] = [-1, 1, 0];
-      Prompt.clearLine(process.stdout, clearLineWhole);
-      // 커서 위치를 처음으로 이동
-      const [cursorToX, cursorToY] = [0, undefined];
-      Prompt.cursorTo(process.stdout, cursorToX, cursorToY);
-      // 입력한 라인을 삭제
-      prompt.line = '';
-      // 프롬프트를 출력
-      prompt.prompt();
-    }
-  });
 }
 
 // 프롬프트에서 받은 라인을 처리
@@ -432,8 +426,9 @@ function onPrompt(line) {
     // exit 예약어는 프로그램을 종료합니다
     case `exit`:
       // 커맨드와 히스토리를 파일에 저장하고 프로그램을 종료
-      if (!modifications.whenModified()) goodbye();
-      else prompt.question(`  detected modified in files, overwrite? [Y/n/c] `, function onAnswer(answer) {
+      const whenNotModified = !modifications.modified();
+      if (whenNotModified) goodbye();
+      else prompt.question(`  detected modifications, overwrite command/history? [Y/n/c] `, function onAnswer(answer) {
         switch (answer.trim().toLowerCase()) {
           case `y`:
             // 커맨드와 히스토리를 파일에 저장하고 프로그램을 종료
@@ -441,7 +436,7 @@ function onPrompt(line) {
             break;
           case `c`:
             // 프롬프트를 출력
-            render();
+            output();
             break;
           case `n`: default:
             // 저장없이 프로그램을 종료
@@ -462,7 +457,7 @@ function onPrompt(line) {
     // help 예약어는 사용법을 제안합니다
     case `help`:
       // 도움말을 출력
-      console.log(kHelp)
+      logging(kHelp)
       break;
 
     // 프롬프트를 일반 커맨드로 처리합니다
@@ -476,9 +471,7 @@ function onPrompt(line) {
   while (items(history) > constants.maxHistorySize) history.pop();
 
   // 프롬프트를 출력
-  if (shouldRenderPrompt) render();
-  // 프롬프트를 다시 출력하도록 되돌림
-  shouldRenderPrompt = true;
+  output();
 
   //
   // 내부 함수
@@ -492,11 +485,11 @@ function onPrompt(line) {
         // 커맨드에 있는지 확인
         let payload = empty(command[cmd]) ? null : command[cmd];
         // 알수없는 커맨드로 표시, 또는 유효한 커맨드는 페이로드를 전송
-        if (!payload) render(`? ${cmd}`); else {
+        if (!payload) output(`? ${cmd}`); else {
           // 감싸진 ' 또는 " 를 문자열에서 벗김
           payload = disclosureQuotes(payload);
           // 커맨드를 터미널에 표시
-          render(`> ${cmd}: ${payload}`);
+          output(`> ${cmd}: ${payload}`);
           // 지정한 커맨드를 전송
           sender(payload);
         }
@@ -512,11 +505,9 @@ function onPrompt(line) {
     // 커서 아래의 화면을 삭제
     Prompt.clearScreenDown(process.stdout);
     // 환영 메시지를 출력
-    console.log(constants.simpleWelcome);
-    // 전체화면을 지운후에 URL 현황을 출력
-    if (constants.showUrlWhenClear) onUrl();
+    logging(constants.simpleWelcome);
     // 프롬프트를 출력
-    render();
+    output();
   }
 }
 
@@ -545,9 +536,9 @@ function onCmd(parse, quick = true) {
           // 텍스트 길이가 프롬프트 범위를 초과하는지 확인
           const whenOverLimit = text.length + payload.length > constants.maxPromptLimit;
           // 범위를 벗어난 커맨드를 출력
-          if (whenOverLimit) console.log(`- get ${cmd}: ${payload}`); else {
+          if (whenOverLimit) logging(`- get ${cmd}: ${payload}`); else {
             // 합쳐질 커맨드를 출력
-            console.log(`+ get ${cmd}: ${payload}`);
+            logging(`+ get ${cmd}: ${payload}`);
             // 텍스트를 합침
             if (!empty(payload)) text += `'${payload}' `;
             // 텍스트를 합친 카운드
@@ -587,15 +578,15 @@ function onCmd(parse, quick = true) {
         // set 가능여부를 확인
         const shouldSet = !empty(key) && !empty(value);
         // set 출력
-        if (!shouldSet) console.log(`- set ${key}: ${value}`); {
+        if (!shouldSet) logging(`- set ${key}: ${value}`); {
           // 커맨드를 추가
           command[key] = disclosureQuotes(value);
           // 지정한 커맨드를 출력
-          console.log(`+ set ${key}: ${command[key]}`);
+          logging(`+ set ${key}: ${command[key]}`);
           whenSet = true;
         }
       }
-      if (whenSet) console.log(`  ${items(command)} items`);
+      if (whenSet) logging(`  ${items(command)} items`);
       break;
 
     case `del`:
@@ -607,7 +598,7 @@ function onCmd(parse, quick = true) {
         // 삭제 대상인 커맨드인지 검색
         for (const [cmd, payload] of Object.entries(command)) if (search(cmd, wildcard)) {
           // 커맨드를 출력하여 검토
-          console.log(`- ${cmd}: ${payload}`);
+          logging(`- ${cmd}: ${payload}`);
           deletes.push(cmd);
         }
       }
@@ -618,13 +609,13 @@ function onCmd(parse, quick = true) {
             // 검토한 커맨드를 모두 삭제
             for (const cmd of deletes) delete command[cmd];
             // 삭제한 결과를 출력
-            console.log(`  ${items(command)} items (deleted ${items(deletes)} items)`);
+            logging(`  ${items(command)} items (deleted ${items(deletes)} items)`);
             // 프롬프트를 출력
-            render();
+            output();
             break;
           case `n`: default:
             // 프롬프트를 출력
-            render();
+            output();
             break;
         }
       });
@@ -644,8 +635,8 @@ function onCmd(parse, quick = true) {
         // 감싸진 ' 또는 " 를 문자열에서 벗김
         payload = disclosureQuotes(payload);
         // 커맨드를 터미널에 표시
-        if (whenText) render(`> ${payload}`);
-        else render(`> ${cmd}: ${payload}`);
+        if (whenText) output(`> ${payload}`);
+        else output(`> ${cmd}: ${payload}`);
         // 지정한 커맨드를 전송
         sender(payload);
       }
@@ -657,7 +648,7 @@ function onCmd(parse, quick = true) {
   }
 
   // 프롬프트를 출력
-  if (shouldRenderPrompt) render();
+  output();
 
   //
   // 내부 함수
@@ -666,8 +657,8 @@ function onCmd(parse, quick = true) {
   // 히스토리를 모두 출력
   function cmdAll() {
     // 전체 커맨드를 모두 출력
-    console.log(Yaml.dump(command, { lineWidth: -1 }).trim());
-    console.log(`  ${items(command)} items`);
+    logging(Yaml.dump(command, { lineWidth: -1 }).trim());
+    logging(`  ${items(command)} items`);
   }
 }
 
@@ -679,15 +670,15 @@ function onUrl(states = true) {
     // 연결된 전체 목록에서 웹소켓을 연결을 확인
     const connection = connections[id];
     // 웹소켓 연결이 온라인 상태인지 확인
-    const connected = connection && connection.ws && equals(connection.ws.readyState, 1);
+    const connected = connection && connection.client && equals(connection.client.readyState, 1);
     // +(온라인) / -(오프라인)을 카운트
     if (connected) online++; else offline++;
     // 상태 구분이 필요하면 +(온라인) / -(오프라인)으로 표기
     const state = !states ? `*` : connected ? `+` : `-`;
     // 접속상태와 URL 정보를 출력
-    console.log(`${state} [${id}] ${connection.url}`)
+    logging(`${state} [${id}] ${connection.url}`)
   }
-  if (states) console.log(`  ${items(connections)} items (online[+]: ${online}, offline[-]: ${offline})`);
+  if (states) logging(`  ${items(connections)} items (online[+]: ${online}, offline[-]: ${offline})`);
 }
 
 // 히스토리 커맨드를 처리
@@ -709,7 +700,7 @@ function onHistory(parse) {
       const shouldNotDelete = true;
       for (const wildcard of parse.params) remain = remain.filter(cmd => {
         // 일치하면 제거하고
-        if (search(cmd, wildcard)) { console.log(cmd); }
+        if (search(cmd, wildcard)) { logging(cmd); }
         // 일치하지 않은 항목을 남김
         else return shouldNotDelete;
       });
@@ -723,13 +714,13 @@ function onHistory(parse) {
             // 프롬프트를 다시 시작
             letsPrompts();
             // 삭제한 결과를 출력
-            console.log(`  ${items(history)} items (deleted ${deletes} items for [${parse.params}])`);
+            logging(`  ${items(history)} items (deleted ${deletes} items for [${parse.params}])`);
             // 프롬프트를 출력
-            render();
+            output();
             break;
           case `n`: default:
             // 프롬프트를 출력
-            render();
+            output();
             break;
         }
       });
@@ -752,7 +743,7 @@ function onHistory(parse) {
   }
 
   // 프롬프트를 출력
-  render();
+  output();
 
   //
   // 내부 함수
@@ -766,15 +757,15 @@ function onHistory(parse) {
       const copied = history.slice().reverse();
       while (items(copied) > count) copied.shift();
       // 히스토리를 카운트 만큼 출력 /반대로 출력해야 읽기가 쉬움/
-      for (const line of copied) console.log(`${line}`);
+      for (const line of copied) logging(`${line}`);
       // 히스토리 출력수와 전체수를 출력
       const whenLessThanTotal = items(copied) < count;
-      if (whenLessThanTotal) console.log(`  ${items(history)} items`);
-      else console.log(`  ${count} items (total ${items(history)} items)`);
+      if (whenLessThanTotal) logging(`  ${items(history)} items`);
+      else logging(`  ${count} items (total ${items(history)} items)`);
     } else {
       // 히스토리를 모두 출력 /반대로 출력해야 읽기가 쉬움/
-      for (const line of history.slice().reverse()) console.log(`${line}`);
-      console.log(`  ${items(history)} items`);
+      for (const line of history.slice().reverse()) logging(`${line}`);
+      logging(`  ${items(history)} items`);
     }
   }
 }
@@ -794,14 +785,14 @@ function letsConnections() {
       // 접속을 위한 옵션
       options,
       // 웹소켓에 연결되었음
-      function onWebSocketOpen(ws) {
+      function onWebSocketOpen(client) {
         // 연결한 정보를 출력
-        render(`< [${id}] open ${connection.url}`);
+        output(`< [${id}] open ${connection.url}`);
       },
       // 웹소켓이 끊겼음
-      function onWebSocketClose(ws, code, url, state, count) {
+      function onWebSocketClose(client, code, url, state, count) {
         // 끊긴 정보를 출력
-        render(`< [${id}] close ${connection.url}`);
+        output(`< [${id}] close ${connection.url}`);
         // 연결이 모두 끊기면 프로그램을 종료
         online(function onState(states) {
           // 연결이 모두 끊겼는지 확인: 연결중인 항목이 없고 연결된 항목이 없으면 모두 끊긴것
@@ -810,24 +801,24 @@ function letsConnections() {
           if (whenOffline) goodbye();
         });
         // 연결이 끊기면 재연결을 하지 않도록 0을 반환
-        const noReconnection = 0;
-        return noReconnection;
+        const shouldNotReconnection = 0;
+        return shouldNotReconnection;
       },
       // 웹소켓에서 메시지를 받음
-      function onWebSocketMessage(ws, message) {
-        render(`< [${id}] ${message}`);
+      function onWebSocketMessage(client, message) {
+        output(`< [${id}] ${message}`);
       },
       // 웹소켓에서 에러를 받음
-      function onError(ws, error) {
-        render(`< [${id}] error ${connection.url} '${error}'`);
+      function onError(client, error) {
+        output(`< [${id}] error ${connection.url} '${error}'`);
       },
       // 웹소켓에서 PING 받음
-      function onPing(ws) {
-        render(`< [${id}] ping`);
+      function onPing(client) {
+        output(`< [${id}] ping`);
       },
       // 웹소켓에서 PONG 받음
-      function onPong(ws) {
-        render(`< [${id}] pong`);
+      function onPong(client) {
+        output(`< [${id}] pong`);
       },
     );
   }
@@ -846,10 +837,10 @@ function sender(payload) {
     // 연결된 전체 목록에서 웹소켓을 연결을 확인
     const connection = connections[id];
     // 웹소켓 연결이 온라인 상태인지 확인
-    const whenOnline = connection && connection.ws && equals(connection.ws.readyState, 1);
+    const whenOnline = connection && connection.client && equals(connection.client.readyState, 1);
     // 연결된 웹소켓에 커맨드를 전송
     if (whenOnline) {
-      connection.ws.send(payload);
+      connection.client.send(payload);
       count++;
     }
   }
@@ -860,7 +851,7 @@ function sender(payload) {
 // - message: 출력할 메시지
 // - cursor: 프롬프트 출력이 필요하면 true
 // - preserveCursor: 커서의 위치를 유지하면서 프롬프트 출력이 필요하면 true
-function render(message = undefined, cursor = true, preserveCursor = true) {
+function output(message = undefined, cursor = true, preserveCursor = true) {
   if (prompt) {
     // 프롬프트와 입력하던 라인을 제거
     const [clearLineLeft, clearLineRight, clearLineWhole] = [-1, 1, 0];
@@ -869,12 +860,12 @@ function render(message = undefined, cursor = true, preserveCursor = true) {
     const [cursorToX, cursorToY] = [0, undefined];
     Prompt.cursorTo(process.stdout, cursorToX, cursorToY);
     // /메시지가 있으면/ 메시지를 출력
-    if (message) console.log(message);
+    if (message) logging(message);
     // /입력하던 라인이 있으면/ 입력하던 라인을 다시 출력
     if (!empty(prompt.line)) prompt.write(process.stdout, prompt.line);
     // 커서 위치를 유지하면서 프롬프트를 다시 출력
     if (cursor) prompt.prompt(preserveCursor);
-  } else console.log(message);
+  } else logging(message);
 }
 
 // 오프라인 상태인지 확인 /연결이 모두 끊겼으면 오프라인 상태로 판단/
@@ -897,7 +888,7 @@ function online(onState) {
     // 연결을 확인
     const connection = connections[url];
     // 연결한 상태를 구분하여 카운트
-    if (connection && connection.ws) states[connection.ws.readyState].count++;
+    if (connection && connection.client) states[connection.client.readyState].count++;
   }
   // 온라인 상태를 확인
   if (onState) onState({
@@ -911,13 +902,19 @@ function online(onState) {
 }
 
 // 마지막 문구를 출력하고 프로그램을 종료
+// - saveCommandAndHistory: 커맨드와 히스토리 파일을 저장
+// - message: 종료직전에 출력할 마지막 문구
 function goodbye(saveCommandAndHistory = true, messages = []) {
-  // 문자열을 배열로 변경
-  if (!Array.isArray(messages) && !empty(messages)) messages = [messages];
+  // 일반 문자열이면 배열로 변경
+  const whenNotArray = !Array.isArray(messages) && !empty(messages);
+  if (whenNotArray) messages = [messages];
   // 연결정보가 없으면 문구를 추가
   if (zero(items(connections)) || !online()) messages.push(`No Connections`);
+  // 커맨드와 히스토리를 파일에 저장하지 않음
+  const whenSaveOff = !saveCommandAndHistory;
+  if (whenSaveOff) messages.push(`No Saving`);
   // 커맨드와 히스토리를 파일에 저장
-  if (!saveCommandAndHistory) messages.push(`No Saving`); else try {
+  else try {
     // 전체 커맨드를 JSON 형식에서 YML 형식으로 변환하고 커맨드 파일을 저장
     if (items(command)) Fs.writeFileSync(spec.commandFile, Yaml.dump(command, { lineWidth: -1 }));
     // 히스토리 배열을 TEXT 형식으로 변환하고 역순으로 변경하고 파일에 저장
@@ -931,7 +928,7 @@ function goodbye(saveCommandAndHistory = true, messages = []) {
   // 마지막 메시지를 출력
   const message = zero(items(messages)) ? `${constants.goodbye}` : `${constants.goodbye} (${messages})`;
   const promptOff = false;
-  render(message, promptOff);
+  output(message, promptOff);
   // 프로그램을 종료
   process.exit(0);
 }
@@ -1018,7 +1015,7 @@ function websocket(connection, url, options, onOpen, onClose, onMessage, onError
     self.succeed = true;
   }
   catch (exc) {
-    render(`exc=${self.exc = exc}`);
+    output(`exc=${self.exc = exc}`);
   }
   return self;
 }
@@ -1102,4 +1099,9 @@ function items(obj) {
 // - 같으면 true, 다르면 false
 function equals(a, b) {
   return a === b;
+}
+
+// 터미널에 로그를 출력
+function logging(msg) {
+  console.log(msg);
 }
