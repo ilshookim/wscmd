@@ -687,7 +687,7 @@ function onHistory(parse) {
   const whenEmptySubCmd = !parse.sub;
   if (whenEmptySubCmd) historyAll(constants.showHistorySize);
   // 커맨드를 구분하여 처리
-  if (parse.sub) switch (parse.sub) {
+  else switch (parse.sub) {
     case `all`:
       // 히스토리를 모두 출력
       historyAll();
