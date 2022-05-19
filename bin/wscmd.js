@@ -517,8 +517,11 @@ function onPrompt(line) {
 function onCmd(parse, quick = true) {
   // /quick 커맨드면/ cmd 가 생략된 것이므로 sub 를 cmd 로 맞춤
   if (quick) parse.sub = parse.cmd;
+  // 전체 커맨드를 모두 출력
+  const whenEmptySubCmd = !parse.sub;
+  if (whenEmptySubCmd) cmdAll();
   // 커맨드를 구분하여 처리
-  if (parse.sub) switch (parse.sub) {
+  else switch (parse.sub) {
     case `list`:
       // 전체 커맨드를 모두 출력
       cmdAll();
@@ -642,10 +645,6 @@ function onCmd(parse, quick = true) {
       }
       break;
   }
-  else {
-    // 전체 커맨드를 모두 출력
-    cmdAll();
-  }
 
   // 프롬프트를 출력
   output();
@@ -684,6 +683,9 @@ function onUrl(states = true) {
 // 히스토리 커맨드를 처리
 // - parse: 라인을 구문분석한 결과
 function onHistory(parse) {
+  // 히스토리를 모두 출력
+  const whenEmptySubCmd = !parse.sub;
+  if (whenEmptySubCmd) historyAll(constants.showHistorySize);
   // 커맨드를 구분하여 처리
   if (parse.sub) switch (parse.sub) {
     case `all`:
@@ -736,10 +738,6 @@ function onHistory(parse) {
       // 히스토리 카운트만큼 출력
       if (!zero(count)) historyAll(count);
       break;
-  }
-  else {
-    // 히스토리를 모두 출력
-    historyAll(constants.showHistorySize);
   }
 
   // 프롬프트를 출력
