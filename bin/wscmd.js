@@ -63,6 +63,10 @@ const functions = {
   goodbye: goodbye,
   // 웹소켓으로 연결
   websocket: websocket,
+  // 문자열에서 와일드카드 *(별표)를 이용하여 검색
+  search: search,
+  // ' 또는 " 로 감싸진 문자열을 모두 벗겨냄
+  disclosureQuotes: disclosureQuotes,
   // 0 인지 확인
   zero: zero,
   // 비었는지 확인
@@ -71,10 +75,6 @@ const functions = {
   items: items,
   // 같은지 비교
   equals: equals,
-  // 문자열에서 와일드카드 *(별표)를 이용하여 검색
-  search: search,
-  // ' 또는 " 로 감싸진 문자열을 모두 벗겨냄
-  disclosureQuotes: disclosureQuotes,
 };
 
 // 상수
@@ -167,6 +167,22 @@ module.exports = {
 // 웹소켓 CLI 구현
 //
 
+// 커맨드와 히스토리 파일이 현재 시점에서 수정이 되었는지 확인
+const modifications = {
+  // 읽은 시점에 시간을 보관
+  command: null,
+  history: null,
+  // 읽은 시점에 확인
+  commandLoaded: function () { this.command = this.time(spec.commandFile) },
+  historyLoaded: function () { this.history = this.time(spec.historyFile) },
+  // 현재 시점에 파일이 수정되었는지 확인
+  commandModified: function () { return this.command && !equals(this.command, this.time(spec.commandFile)); },
+  historyModified: function () { return this.history && !equals(this.history, this.time(spec.historyFile)); },
+  whenModified: function () { return this.commandModified() || this.historyModified(); },
+  // 파일에서 수정시간을 확인
+  time: (file) => Fs.statSync(file).mtime.getTime(),
+};
+
 // 플래그를 정의
 // - 저장하고 종료하는지: 저장하려면 true
 let shouldSavingWhenExit = true;
@@ -225,7 +241,7 @@ function run() {
   if (parse.prj) parse.history = `${parse.prj}-history`;
   spec.commandFile = Path.join(configure.pwdPath, parse.cmd ? parse.cmd : spec.commandFile);
   spec.historyFile = Path.join(configure.pwdPath, parse.history ? parse.history : spec.historyFile);
-  console.log(`  % cmd=${spec.commandFile}`);
+  console.log(`  % command=${spec.commandFile}`);
   console.log(`  % history=${spec.historyFile}`);
   console.log(``);
 
@@ -239,7 +255,8 @@ function run() {
     // 사용방법을 출력
     console.log(kUsage)
     // 프로그램을 종료
-    goodbye(`${constants.goodbye} (No Connections)`);
+    const saveOff = false;
+    goodbye(saveOff);
   }
   // 한줄을 띄움
   console.log(``);
@@ -247,6 +264,8 @@ function run() {
   // 커맨드 파일을 로드합니다
   const whenExistsCommandFile = Fs.existsSync(spec.commandFile);
   if (whenExistsCommandFile) {
+    // 커맨드 파일을 읽은 시점에 수정시간을 보관
+    modifications.commandLoaded();
     // 커맨드 파일을 로드
     const yaml = Fs.readFileSync(spec.commandFile);
     // YAML 형식을 JSON 형식으로 변환
@@ -256,6 +275,8 @@ function run() {
   // 히스토리 파일을 로드합니다
   const whenExistsHistoryFile = Fs.existsSync(spec.historyFile);
   if (whenExistsHistoryFile) {
+    // 히스토리 파일을 읽은 시점에 수정시간을 보관
+    modifications.historyLoaded();
     // 히스토리 파일을 로드
     const text = Fs.readFileSync(spec.historyFile).toString();
     // TEXT 형식을 배열로 변환하고 역순으로 변경하고 빈 라인을 제거
@@ -306,27 +327,9 @@ function letsPrompts() {
   prompt.on(`close`, function onPromptClose() {
     // 프로그램을 종료를 확인
     const whenProgramExit = !shouldReplacePrompt;
-    if (whenProgramExit) {
-      // 저장없이 종료
-      if (!shouldSavingWhenExit) goodbye(`${constants.goodbye} (No Saving)`);
-      // 히스토리 파일과 커맨드 파일을 저장하고 종료
-      else {
-        try {
-          // 전체 커맨드를 JSON 형식에서 YML 형식으로 변환하고 커맨드 파일을 저장
-          if (items(command)) Fs.writeFileSync(spec.commandFile, Yaml.dump(command, { lineWidth: -1 }));
-          // 히스토리 배열을 TEXT 형식으로 변환하고 역순으로 변경하고 파일에 저장
-          if (items(history)) Fs.writeFileSync(spec.historyFile, history.reverse().join('\n'));
-          // 프로그램을 종료
-          const message = !online() ? `${constants.goodbye} (No Connections)` : constants.goodbye;
-          goodbye(message);
-        }
-        catch (exc) {
-          // 저장없이 프로그램을 종료
-          const message = !online() ? `${constants.goodbye} (No Saving, No Connections)` : constants.goodbye;
-          goodbye(message);
-        }
-      }
-    }
+    // 파일이 수정됐으면 저장이 없이 종료, 수정되지 않았으면 저장하고 종료
+    const saveCommandAndHistoryWhenNotModified = modifications.whenModified() ? false : true;
+    if (whenProgramExit) goodbye(saveCommandAndHistoryWhenNotModified);
     // 새로운 프롬프트로 대체를 완료
     shouldReplacePrompt = false;
   });
@@ -428,16 +431,32 @@ function onPrompt(line) {
 
     // exit 예약어는 프로그램을 종료합니다
     case `exit`:
-      // 프롬프트를 닫고 프로그램을 종료
-      prompt.close();
+      // 커맨드와 히스토리를 파일에 저장하고 프로그램을 종료
+      if (!modifications.whenModified()) goodbye();
+      else prompt.question(`  detected modified in files, overwrite? [Y/n/c] `, function onAnswer(answer) {
+        switch (answer.trim().toLowerCase()) {
+          case `y`:
+            // 커맨드와 히스토리를 파일에 저장하고 프로그램을 종료
+            goodbye();
+            break;
+          case `c`:
+            // 프롬프트를 출력
+            render();
+            break;
+          case `n`: default:
+            // 저장없이 프로그램을 종료
+            const saveOff = false;
+            goodbye(saveOff);
+            break;
+        }
+      });
       break;
 
     // exit! 예약어는 히스토리와 커맨드 저장이 없이 프로그램을 종료합니다
     case `exit!`:
-      // 저장이 없이
-      shouldSavingWhenExit = false;
-      // 프롬프트를 닫고 프로그램을 종료
-      prompt.close();
+      // 저장없이 프로그램을 종료
+      const saveOff = false;
+      goodbye(saveOff);
       break;
 
     // help 예약어는 사용법을 제안합니다
@@ -477,7 +496,7 @@ function onPrompt(line) {
           // 감싸진 ' 또는 " 를 문자열에서 벗김
           payload = disclosureQuotes(payload);
           // 커맨드를 터미널에 표시
-          render(`> ${payload}`);
+          render(`> ${cmd}: ${payload}`);
           // 지정한 커맨드를 전송
           sender(payload);
         }
@@ -592,17 +611,22 @@ function onCmd(parse, quick = true) {
           deletes.push(cmd);
         }
       }
-      // 검토한 항목이 있으면 삭제를 질의
-      if (items(deletes)) questionYesNo(`  [Y/n] `, function onYes() {
-        // 검토한 커맨드를 모두 삭제
-        for (const cmd of deletes) delete command[cmd];
-        // 삭제한 결과를 출력
-        console.log(`  ${items(command)} items (deleted ${items(deletes)} items)`);
-        // 프롬프트를 출력
-        render();
-      }, function onNo() {
-        // 프롬프트를 출력
-        render();
+      // 검토한 항목이 있으면 삭제를 문답
+      prompt.question(`  [Y/n]`, function onAnswer(answer) {
+        switch (answer.trim().toLowerCase()) {
+          case `y`:
+            // 검토한 커맨드를 모두 삭제
+            for (const cmd of deletes) delete command[cmd];
+            // 삭제한 결과를 출력
+            console.log(`  ${items(command)} items (deleted ${items(deletes)} items)`);
+            // 프롬프트를 출력
+            render();
+            break;
+          case `n`: default:
+            // 프롬프트를 출력
+            render();
+            break;
+        }
       });
       break;
 
@@ -613,12 +637,15 @@ function onCmd(parse, quick = true) {
     default:
       // 커맨드를 확인
       for (const cmd of parse.params) if (!empty(cmd)) {
+        // 텍스트인지 확인
+        const whenText = empty(command[cmd]);
         // 커맨드에 있는지 확인
-        let payload = empty(command[cmd]) ? cmd : command[cmd];
+        let payload = whenText ? cmd : command[cmd];
         // 감싸진 ' 또는 " 를 문자열에서 벗김
         payload = disclosureQuotes(payload);
         // 커맨드를 터미널에 표시
-        render(`> ${payload}`);
+        if (whenText) render(`> ${payload}`);
+        else render(`> ${cmd}: ${payload}`);
         // 지정한 커맨드를 전송
         sender(payload);
       }
@@ -686,20 +713,25 @@ function onHistory(parse) {
         // 일치하지 않은 항목을 남김
         else return shouldNotDelete;
       });
-      // 검토한 항목이 있으면 삭제를 질의
+      // 검토한 항목이 있으면 삭제를 문답
       const deletes = items(history) - items(remain);
-      if (deletes) questionYesNo(`  [Y/n] `, function onYes() {
-        // 검토한 히스토리를 모두 삭제
-        history = remain.reverse();
-        // 프롬프트를 다시 시작
-        letsPrompts();
-        // 삭제한 결과를 출력
-        console.log(`  ${items(history)} items (deleted ${deletes} items [${parse.params}])`);
-        // 프롬프트를 출력
-        render();
-      }, function onNo() {
-        // 프롬프트를 출력
-        render();
+      if (deletes) prompt.question(`  [Y/n]`, function onAnswer(answer) {
+        switch (answer.trim().toLowerCase()) {
+          case `y`:
+            // 검토한 히스토리를 모두 삭제
+            history = remain.reverse();
+            // 프롬프트를 다시 시작
+            letsPrompts();
+            // 삭제한 결과를 출력
+            console.log(`  ${items(history)} items (deleted ${deletes} items for [${parse.params}])`);
+            // 프롬프트를 출력
+            render();
+            break;
+          case `n`: default:
+            // 프롬프트를 출력
+            render();
+            break;
+        }
       });
       break;
 
@@ -735,7 +767,10 @@ function onHistory(parse) {
       while (items(copied) > count) copied.shift();
       // 히스토리를 카운트 만큼 출력 /반대로 출력해야 읽기가 쉬움/
       for (const line of copied) console.log(`${line}`);
-      console.log(`  ${count} items (total ${items(history)} items)`);
+      // 히스토리 출력수와 전체수를 출력
+      const whenLessThanTotal = items(copied) < count;
+      if (whenLessThanTotal) console.log(`  ${items(history)} items`);
+      else console.log(`  ${count} items (total ${items(history)} items)`);
     } else {
       // 히스토리를 모두 출력 /반대로 출력해야 읽기가 쉬움/
       for (const line of history.slice().reverse()) console.log(`${line}`);
@@ -749,51 +784,49 @@ function letsConnections() {
   // 연결마다 웹소켓에 접속합니다
   for (const id in connections) {
     // 연결을 확인
-    const connection = connections[id];
+    const [connection, options] = [connections[id], null];
     // 웹소켓 클라이언트에서 웹소켓 서버에 접속
     websocket(
       // 연결에 사용할 객체를 전달
       connection,
       // 접속할 정보를 전달
       connection.url,
+      // 접속을 위한 옵션
+      options,
       // 웹소켓에 연결되었음
       function onWebSocketOpen(ws) {
         // 연결한 정보를 출력
         render(`< [${id}] open ${connection.url}`);
       },
       // 웹소켓이 끊겼음
-      function onWebSocketClose(code, url, state, count) {
+      function onWebSocketClose(ws, code, url, state, count) {
         // 끊긴 정보를 출력
         render(`< [${id}] close ${connection.url}`);
         // 연결이 모두 끊기면 프로그램을 종료
         online(function onState(states) {
           // 연결이 모두 끊겼는지 확인: 연결중인 항목이 없고 연결된 항목이 없으면 모두 끊긴것
           const whenOffline = zero(states.connecting) && zero(states.open);
-          if (whenOffline) {
-            // 프롬프트를 종료하고 프로그램을 종료
-            if (prompt) prompt.close();
-            // 프로그램을 종료
-            else goodbye(`${constants.goodbye} (No Connections)`);
-          }
+          // 프로그램을 종료
+          if (whenOffline) goodbye();
         });
         // 연결이 끊기면 재연결을 하지 않도록 0을 반환
         const noReconnection = 0;
         return noReconnection;
       },
       // 웹소켓에서 메시지를 받음
-      function onWebSocketMessage(message) {
+      function onWebSocketMessage(ws, message) {
         render(`< [${id}] ${message}`);
       },
       // 웹소켓에서 에러를 받음
-      function onError(error) {
+      function onError(ws, error) {
         render(`< [${id}] error ${connection.url} '${error}'`);
       },
       // 웹소켓에서 PING 받음
-      function onPing() {
+      function onPing(ws) {
         render(`< [${id}] ping`);
       },
       // 웹소켓에서 PONG 받음
-      function onPong() {
+      function onPong(ws) {
         render(`< [${id}] pong`);
       },
     );
@@ -878,101 +911,107 @@ function online(onState) {
 }
 
 // 마지막 문구를 출력하고 프로그램을 종료
-// - message: 출력할 메시지
-// - cursor: 프롬프트를 다시 출력하려면 true
-function goodbye(message = constants.goodbye, cursor = false) {
+function goodbye(saveCommandAndHistory = true, messages = []) {
+  // 문자열을 배열로 변경
+  if (!Array.isArray(messages) && !empty(messages)) messages = [messages];
+  // 연결정보가 없으면 문구를 추가
+  if (zero(items(connections)) || !online()) messages.push(`No Connections`);
+  // 커맨드와 히스토리를 파일에 저장
+  if (!saveCommandAndHistory) messages.push(`No Saving`); else try {
+    // 전체 커맨드를 JSON 형식에서 YML 형식으로 변환하고 커맨드 파일을 저장
+    if (items(command)) Fs.writeFileSync(spec.commandFile, Yaml.dump(command, { lineWidth: -1 }));
+    // 히스토리 배열을 TEXT 형식으로 변환하고 역순으로 변경하고 파일에 저장
+    if (items(history)) Fs.writeFileSync(spec.historyFile, history.reverse().join('\n'));
+    // 저장하고 종료
+    messages.push(`Saving`);
+  } catch (exc) {
+    // 저장없이 종료
+    messages.push(`No Saving`);
+  }
   // 마지막 메시지를 출력
-  render(message, cursor);
+  const message = zero(items(messages)) ? `${constants.goodbye}` : `${constants.goodbye} (${messages})`;
+  const promptOff = false;
+  render(message, promptOff);
   // 프로그램을 종료
   process.exit(0);
 }
 
-// 문답 [Y/n]
-// - question: 질문
-// - onYes: 긍정적인 답변
-// - onNo: 부정적인 답변
-function questionYesNo(question, onYes, onNo) {
-  const whenHaveQuestion = prompt && !empty(question);
-  if (whenHaveQuestion) prompt.question(question, (answer) => {
-    // 삭제를 결정
-    const whenYes = equals(answer.trim().toLowerCase(), `y`);
-    // Yes 처리
-    if (whenYes && onYes) onYes();
-    // No 처리
-    else if (onNo) onNo();
-  });
-}
+//
+// 공용함수를 구현
+//
 
-// HTTP 웹소켓 요청과 응답을 한번에 처리, 실패한 경우에 재접속
-// - http: 상태를 관리할 객체
+// 웹소켓 서버에 연결하고 요청과 응답을 한번에 처리, 실패한 경우에 재접속
+// - http: 상태를 붙일 객체
 // - url: 접속할 URL
+// - options: 접속을 위한 옵션
 // - onOpen: 연결된 경우
 // - onClose: 끊긴 경우
-// - onMessage: 웹소켓에서 메시지를 수신한 경우
-// - onError: 웹소켓에 에러가 있는 경우
-// - onPing/onPong: 웹소켓에서 PING/PONG 받은 경우
-function websocket(http, url, onOpen, onClose, onMessage, onError, onPing, onPong) {
-  let self = { name: `websocket(http, url, ...)`, succeed: false };
+// - onMessage: 메시지를 수신한 경우
+// - onError: 에러가 있는 경우
+// - onPing/onPong: PING/PONG 받은 경우
+function websocket(connection, url, options, onOpen, onClose, onMessage, onError, onPing, onPong) {
+  let self = { name: `websocket(connection, url, options)`, succeed: false };
   try {
     // 연결을 준비하는 상태
-    if (!http.state) { http.state = `idle`; http.reconnects = 0; }
-    else http.reconnects++;
+    if (!connection.state) { connection.state = `idle`; connection.reconnects = 0; }
+    else connection.reconnects++;
 
     // 재접속 타이머를 삭제
-    if (http.timer) {
-      clearTimeout(http.timer);
-      http.timer = null;
+    if (connection.timer) {
+      clearTimeout(connection.timer);
+      connection.timer = null;
     }
 
-    // 웹소켓 서버에 접속하고 HTTP.WS 추가
-    if (!http.url) http.url = url;
-    const ws = http.ws = new Ws.WebSocket(url, {
+    // 접속 URL 설정
+    if (!connection.url) connection.url = url;
+    // 서버에 접속하고 연결에 클라이언트를 추가
+    const client = connection.client = new Ws.WebSocket(url, options || {
       // 사설 인증서를 허용
       rejectUnauthorized: false
     });
 
-    // 웹소켓 오픈
-    ws.on(`open`, function () {
+    // 서버에 연결됨
+    client.on(`open`, function () {
       // 연결된 상태
-      http.state = `open`;
-      http.reconnects = 0;
+      connection.state = `open`;
+      connection.reconnects = 0;
 
-      if (onOpen) onOpen(ws);
+      if (onOpen) onOpen(client);
     });
 
-    // 웹소켓 끊김
-    ws.on(`close`, function (code) {
+    // 연결이 끊김
+    client.on(`close`, function (code) {
       // 연결이 끊긴 상태
-      if (equals(http.state, `open`)) http.state = `close`;
+      if (equals(connection.state, `open`)) connection.state = `close`;
 
       // 종료 이벤트를 호출하고 재접속
       if (onClose) {
         // 재접속 간격을 확인하고 설정된 간격 후에 재접속을 시도
-        const reconnectInterval = onClose(code, http.url, http.state, http.reconnects);
+        const reconnectInterval = onClose(client, code, connection.url, connection.state, connection.reconnects);
         // 재접속 간격이 0 이거나 null/undefined 이면 재접속을 하지 않음
         const whenNeedReconnection = !zero(reconnectInterval);
-        if (whenNeedReconnection) http.timer = setTimeout(websocket, reconnectInterval,
-          http, url, onOpen, onClose, onMessage, onError, onPing, onPong);
+        if (whenNeedReconnection) connection.timer = setTimeout(websocket, reconnectInterval,
+          connection, url, options, onOpen, onClose, onMessage, onError, onPing, onPong);
       }
     });
 
-    // 웹소켓 연결에서 메시지를 받음
-    ws.on(`message`, function (message) {
-      if (onMessage) onMessage(message);
+    // 서버에서 메시지를 받음
+    client.on(`message`, function (message) {
+      if (onMessage) onMessage(client, message);
     });
 
-    // 웹소켓 연결에서 PING 받음
-    ws.on(`ping`, function () {
-      if (onPing) onPing(ws);
+    // 서버에서 PING 받음
+    client.on(`ping`, function () {
+      if (onPing) onPing(client);
     });
 
-    // 웹소켓 연결에서 PONG 받음
-    ws.on(`pong`, function () {
-      if (onPong) onPong(ws);
+    // 서버에서 PONG 받음
+    client.on(`pong`, function () {
+      if (onPong) onPong(client);
     });
 
-    // 웹소켓 연결에서 에러를 받음
-    ws.on(`error`, function (error) {
+    // 서버에서 에러를 받음
+    client.on(`error`, function (error) {
       if (onError) onError(error);
     });
 
@@ -982,6 +1021,53 @@ function websocket(http, url, onOpen, onClose, onMessage, onError, onPing, onPon
     render(`exc=${self.exc = exc}`);
   }
   return self;
+}
+
+// 와일드 카드로 "*"(별표)를 사용하여 문자열을 검색
+// - "a*b" => "a"로 시작하고 "b"로 끝나는 모든 것
+// - "a*" => "a"로 시작하는 모든 것
+// - "*b" => "b"로 끝나는 모든 것
+// - "*a*" => "a"가 포함된 모든 것
+// - "*a*b*"=> "a"가 뒤에 오는 모든 것, 뒤에 "b"가 오는 모든 것, 그 뒤에 오는 모든 것
+// 예) "bird*" => bird 로 시작하는 모든 것
+// - search("bird123", "bird*")                               // true
+// - search("123bird", "*bird")                               // true
+// - search("123bird123", "*bird*")                           // true
+// - search("bird123bird", "bird*bird")                       // true
+// - search("123bird123bird123", "*bird*bird*")               // true
+// - search("s[pe]c 3 re$ex 6 cha^rs", "s[pe]c*re$ex*cha^rs") // true
+// - search("should not match", "should noo*oot match")       // true
+function search(string, wildcard) {
+  // 어떤 문자를 포함하든 모든 문자열에서 검색이 가능한 표현으로 변경
+  const escapeRegex = (str) => str.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1");
+  // "."  => \n 또는 \r를 제외한 문자 찾기
+  // ".*" => 0개 이상의 문자를 포함하는 모든 문자열과 일치
+  wildcard = `${wildcard}`.split("*").map(escapeRegex).join(".*");
+  // "^"  => 시작 부분에 다음이 있는 모든 문자열과 일치
+  // "$"  => 끝에 있는 문자열과 일치
+  wildcard = "^" + wildcard + "$"
+  // 정규식으로 변환하여 검색
+  const regex = new RegExp(wildcard);
+  return regex.test(string);
+}
+
+// ' 또는 "로 감싸진 문자열을 제거
+// - `'''{single}'''`           // `{single}`
+// - `"""{double}"""`           // `{double}`
+function disclosureQuotes(enclosure) {
+  // 전후로 ' 발견 또는 " 발견
+  const single = /^'.*'$/.test(enclosure);
+  const double = /^".*"$/.test(enclosure);
+  // ' 또는 "로 감싸져 있으면
+  const enclosing = single || double;
+  if (enclosing) {
+    // 감싸진 것을 벗겨내고
+    const disclosure = enclosure.substring(1, items(enclosure) - 2);
+    // 감싸진 것이 없을 때까지 재귀호출로 반복하여 ' 또는 " 제거
+    return disclosureQuotes(disclosure);
+  }
+  // 감싸진 것이 없을 때까지 반복하여 ' 또는 " 제거한 결과를 반환
+  return enclosure;
 }
 
 // 값이 0인지 확인 (undefined, null 이면 값을 0으로 가정)
@@ -1011,55 +1097,9 @@ function items(obj) {
   return Array.isArray(obj) ? Object.keys(obj).length : Object.getOwnPropertyNames(obj).length;
 }
 
-// a와 b를 비교
+// a와 b를 단순 비교
 // - 타입과 값에 구분이 없이 비교
+// - 같으면 true, 다르면 false
 function equals(a, b) {
   return a === b;
-}
-
-// 와일드 카드로 "*"(별표)를 사용하여 문자열을 검색
-// - "a*b" => "a"로 시작하고 "b"로 끝나는 모든 것
-// - "a*" => "a"로 시작하는 모든 것
-// - "*b" => "b"로 끝나는 모든 것
-// - "*a*" => "a"가 포함된 모든 것
-// - "*a*b*"=> "a"가 뒤에 오는 모든 것, 뒤에 "b"가 오는 모든 것, 그 뒤에 오는 모든 것
-// 예) "bird*" => bird 로 시작하는 모든 것
-// - search("bird123", "bird*")                               // true
-// - search("123bird", "*bird")                               // true
-// - search("123bird123", "*bird*")                           // true
-// - search("bird123bird", "bird*bird")                       // true
-// - search("123bird123bird123", "*bird*bird*")               // true
-// - search("s[pe]c 3 re$ex 6 cha^rs", "s[pe]c*re$ex*cha^rs") // true
-// - search("should not match", "should noo*oot match")       // true
-function search(string, wildcard) {
-  // 어떤 문자를 포함하든 모든 문자열에서 검색이 가능한 표현으로 변경
-  const escapeRegex = (str) => str.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1");
-  // "."  => \n 또는 \r를 제외한 문자 찾기
-  // ".*" => 0개 이상의 문자를 포함하는 모든 문자열과 일치
-  wildcard = wildcard.split("*").map(escapeRegex).join(".*");
-  // "^"  => 시작 부분에 다음이 있는 모든 문자열과 일치
-  // "$"  => 끝에 있는 문자열과 일치
-  wildcard = "^" + wildcard + "$"
-  // 정규식으로 변환하여 검색
-  const regex = new RegExp(wildcard);
-  return regex.test(string);
-}
-
-// ' 또는 "로 감싸진 문자열을 제거
-// - `'''{single}'''`           // `{single}`
-// - `"""{double}"""`           // `{double}`
-function disclosureQuotes(enclosure) {
-  // 전후로 ' 발견 또는 " 발견
-  const single = /^'.*'$/.test(enclosure);
-  const double = /^".*"$/.test(enclosure);
-  // ' 또는 "로 감싸져 있으면
-  const enclosing = single || double;
-  if (enclosing) {
-    // 감싸진 것을 벗겨내고
-    const disclosure = enclosure.substring(1, items(enclosure) - 2);
-    // 감싸진 것이 없을 때까지 재귀호출로 반복하여 ' 또는 " 제거
-    return disclosureQuotes(disclosure);
-  }
-  // 감싸진 것이 없을 때까지 반복하여 ' 또는 " 제거한 결과를 반환
-  return enclosure;
 }
