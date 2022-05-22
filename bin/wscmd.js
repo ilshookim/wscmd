@@ -28,7 +28,7 @@ const [Parser, Prompt] = [Yargs, Readline];
 // 환경
 const configure = {
   // 경로 구분
-  name: `bin`,
+  path: `bin`,
   // 실행파일 이름
   execute: `wscmd`,
   // 버전
@@ -54,13 +54,13 @@ const functions = {
   // 전체 서버에 연결을 시작
   connections: letsConnections,
   // 페이로드를 연결로 보냄
-  sender: sender,
+  send: send,
   // 터미널에 출력하고 프롬프트를 표시
   output: output,
   // 온라인 상태의 연결수를 확인
   online: online,
   // 프로그램을 종료
-  goodbye: goodbye,
+  exit: exit,
   // 웹소켓으로 연결
   websocket: websocket,
   // 문자열에서 와일드카드 *(별표)를 이용하여 검색
@@ -80,13 +80,13 @@ const functions = {
 // 상수
 const constants = {
   // 모듈 경로: bin/wscmd
-  name: `${Path.join(configure.name, Path.basename(module.filename))}`,
+  name: `${Path.join(configure.path, Path.basename(module.filename))}`,
   // 환영 메시지
   welcome: `${configure.execute} ${configure.version} - ${configure.copyright}, ${configure.written}\n`,
   // 전체화면을 지운후에 환영 메시지
   simpleWelcome: `${configure.execute} ${configure.version} - ${configure.copyright}\n`,
   // 예약어 목록
-  reserved: `cmd get set del history clear exit exit! help`,
+  reserves: `cmd get set del history clear exit exit! help`,
   // 안녕 메시지
   goodbye: `Goodbye`,
   // 커맨드 파일명
@@ -105,14 +105,33 @@ const constants = {
   prompt: `$ `,
 };
 
-// 도움말
+// 스펙
+const spec = {
+  ...constants,
+  configure: configure,
+};
+
+// 모듈
+// - 환경, 상수과 스펙을 외부에서 사용
+// - 함수를 외부에서 사용
+const g = module.exports = {
+  ...spec,
+  ...functions,
+  init: init,
+  run: run,
+};
+
+//
+// 도움말 상수
+//
+
 const kUsageNpm =
-  `  usage: $ npm run ${configure.execute} -- [options] wss://localhost:9511/topics\n` +
-  `         $ node bin/${configure.execute} [options] ws://localhost:9510/topics wss://localhost:9511/topics\n\n`;
+  `  usage: $ npm run ${g.configure.execute} -- [options] wss://localhost:9511/topics\n` +
+  `         $ node bin/${g.configure.execute} [options] ws://localhost:9510/topics wss://localhost:9511/topics\n\n`;
 
 const kUsagePkg =
-  `  usage: $ ./${configure.execute} [options] wss://localhost:9511/topics\n` +
-  `         $ ./${configure.execute} [options] ws://localhost:9510/topics wss://localhost:9511/topics\n\n`;
+  `  usage: $ ./${g.configure.execute} [options] wss://localhost:9511/topics\n` +
+  `         $ ./${g.configure.execute} [options] ws://localhost:9510/topics wss://localhost:9511/topics\n\n`;
 
 const kOptions =
   `  options: --cmd=command --history=history   - change command and history filename\n` +
@@ -124,7 +143,7 @@ const kKeys =
   `  > <tab><tab>                               - show auto-completion commands/reserves\n\n`;
 
 const kUsage =
-  `${configure.pkg ? kUsagePkg : kUsageNpm}` +
+  `${g.configure.pkg ? kUsagePkg : kUsageNpm}` +
   `${kOptions}` +
   `${kKeys}` +
   `  > [name, …]                                - /quick/ run commands by name\n` +
@@ -137,8 +156,8 @@ const kUsage =
   `    cmd set [name=payload, name, payload, …] - set commands by delimiter\n` +
   `    cmd del [name, wildcard, …]              - delete commands by name\n` + `\n` +
   `  > url | ll | ls                            - show online states and urls\n` + `\n` +
-  `  > history [count]                          - show history until count (default=${constants.showHistorySize})\n` +
-  `    history all                              - show history (max=${constants.maxHistorySize})\n` +
+  `  > history [count]                          - show history until count (default=${g.showHistorySize})\n` +
+  `    history all                              - show history (max=${g.maxHistorySize})\n` +
   `    history del [wildcard]                   - delete history by wildcard\n` + `\n` +
   `  > clear                                    - clear screen\n` +
   `    exit!                                    - program exit without any saving\n` +
@@ -147,40 +166,9 @@ const kUsage =
 const kHelp =
   `\n${kUsage}`;
 
-// 스펙
-const spec = {
-  ...constants,
-  configure: configure,
-};
-
-// 모듈
-// - 환경, 상수과 스펙을 외부에서 사용
-// - 함수를 외부에서 사용
-module.exports = {
-  ...spec,
-  ...functions,
-  init: init,
-  run: run,
-};
-
 //
 // 웹소켓 CLI 구현
 //
-
-// 커맨드와 히스토리 파일이 쓰는 시점에서 수정이 되었는지 확인
-const modifications = {
-  // 읽은 시점에 시간을 보관
-  command: null,
-  history: null,
-  commandLoaded: function () { this.command = this.time(spec.commandFile) },
-  historyLoaded: function () { this.history = this.time(spec.historyFile) },
-  // 현재 시점에 파일이 수정되었는지 확인
-  commandModified: function () { return this.command && !equals(this.command, this.time(spec.commandFile)); },
-  historyModified: function () { return this.history && !equals(this.history, this.time(spec.historyFile)); },
-  modified: function () { return this.commandModified() || this.historyModified(); },
-  // 파일에서 수정시간을 확인
-  time: (file) => Fs.statSync(file).mtime.getTime(),
-};
 
 // 플래그를 정의
 // - 프롬프트가 교체중인지: 교체중이면 true
@@ -197,23 +185,39 @@ let history = [];
 // - 연결 목록
 let connections = {};
 
+// 기능을 정의
+// 커맨드와 히스토리 파일이 쓰는 시점에서 수정이 되었는지 확인
+const modifications = {
+  // 읽은 시점에 시간을 보관
+  command: null,
+  history: null,
+  commandLoaded: function () { this.command = this.time(spec.commandFile); },
+  historyLoaded: function () { this.history = this.time(spec.historyFile); },
+  // 현재 시점에 파일이 수정되었는지 확인
+  commandModified: function () { return this.command && !equals(this.command, this.time(spec.commandFile)); },
+  historyModified: function () { return this.history && !equals(this.history, this.time(spec.historyFile)); },
+  modified: function () { return this.commandModified() || this.historyModified(); },
+  // 파일에서 수정시간을 확인
+  time: function (file) { return Fs.statSync(file).mtime.getTime(); },
+};
+
 //
-// 모듈 초기화를 자동으로 실행
-// - NODEJS 런타임에서 호출하면 자동으로 run() 함수를 실행합니다
+// 모듈 초기화를 자동으로 실행합니다
+// - NODEJS 런타임에서 호출하면 자동으로 run() 함수를 실행
 //
 init({initial: true});
 
 // 모듈을 초기화
 function init(state = {initial: false, reload: false}) {
   // NODEJS 런타임에서 호출하면 자동으로 run() 함수를 실행합니다
-  const whenNodeRuntime = state && state.initial && configure.node;
+  const whenNodeRuntime = state && state.initial && g.configure.node;
   if (whenNodeRuntime) run();
 }
 
 // 모듈을 실행
 function run() {
   // 환영 메시지를 출력합니다
-  logging(constants.welcome);
+  logging(g.welcome);
 
   // 프로그램 인자를 구문분석합니다
   const helpOff = false;
@@ -234,11 +238,11 @@ function run() {
   // - --history=[히스토리 파일이름]
   if (parse.prj) parse.cmd = `${parse.prj}-command`;
   if (parse.prj) parse.history = `${parse.prj}-history`;
-  spec.commandFile = Path.join(configure.pwdPath, parse.cmd ? parse.cmd : spec.commandFile);
-  spec.historyFile = Path.join(configure.pwdPath, parse.history ? parse.history : spec.historyFile);
+  spec.commandFile = Path.join(g.configure.pwdPath, parse.cmd ? parse.cmd : spec.commandFile);
+  spec.historyFile = Path.join(g.configure.pwdPath, parse.history ? parse.history : spec.historyFile);
   logging(`  % command=${spec.commandFile}`);
   logging(`  % history=${spec.historyFile}`);
-  logging(constants.newline);
+  logging(g.newline);
 
   // 실행 경로와 URL 현황을 출력합니다 /접속상태는 제외/
   const statesOff = false;
@@ -251,9 +255,9 @@ function run() {
     logging(kUsage)
     // 프로그램을 종료
     const saveOff = false;
-    goodbye(saveOff);
+    exit(saveOff);
   }
-  logging(constants.newline);
+  logging(g.newline);
 
   // 커맨드 파일을 로드합니다
   const whenExistsCommandFile = Fs.existsSync(spec.commandFile);
@@ -276,7 +280,7 @@ function run() {
     // TEXT 형식을 배열로 변환하고 역순으로 변경하고 빈 라인을 제거
     history = text.split(`\n`).reverse().filter((line) => !empty(line));
     // 히스토리가 최대치보다 많으면 과거부터 삭제
-    while (items(history) > constants.maxHistorySize) history.pop();
+    while (items(history) > g.maxHistorySize) history.pop();
   }
 
   // 웹소켓을 시작합니다
@@ -329,11 +333,11 @@ function letsPrompts() {
     // 터미널로 설정
     terminal: true,
     // 프롬프트를 설정
-    prompt: constants.prompt,
+    prompt: g.prompt,
     // 히스토리를 설정
     history: history,
     // 히스토리 최대수를 설정
-    historySize: constants.maxHistorySize,
+    historySize: g.maxHistorySize,
     // 커맨드를 자동완성
     completer: onPromptAutoComplete,
   });
@@ -344,7 +348,7 @@ function letsPrompts() {
     const whenProgramExit = !shouldReplacePrompt;
     // 파일이 수정됐으면 저장이 없이 종료, 수정되지 않았으면 저장하고 종료
     const shouldSaveWhenNotModified = modifications.modified() ? false : true;
-    if (whenProgramExit) goodbye(shouldSaveWhenNotModified);
+    if (whenProgramExit) exit(shouldSaveWhenNotModified);
     // 새로운 프롬프트로 대체를 완료
     shouldReplacePrompt = false;
   });
@@ -362,7 +366,7 @@ function letsPrompts() {
   // - line: 프롬프트에서 받은 문자열
   function onPromptAutoComplete(line) {
     // 예약어를 배열로 작성
-    const reserves = constants.reserved.split(' ');
+    const reserves = g.reserves.split(' ');
     // 예약어와 커맨드를 하나로 합침
     const completions = [...reserves, ...Object.keys(command).sort()];
     // 입력한 커맨드를 배열로 변경
@@ -427,12 +431,12 @@ function onPrompt(line) {
     case `exit`:
       // 커맨드와 히스토리를 파일에 저장하고 프로그램을 종료
       const whenNotModified = !modifications.modified();
-      if (whenNotModified) goodbye();
+      if (whenNotModified) exit();
       else prompt.question(`  detected modifications, overwrite command/history? [Y/n/c] `, function onAnswer(answer) {
         switch (answer.trim().toLowerCase()) {
           case `y`:
             // 커맨드와 히스토리를 파일에 저장하고 프로그램을 종료
-            goodbye();
+            exit();
             break;
           case `c`:
             // 프롬프트를 출력
@@ -441,7 +445,7 @@ function onPrompt(line) {
           case `n`: default:
             // 저장없이 프로그램을 종료
             const saveOff = false;
-            goodbye(saveOff);
+            exit(saveOff);
             break;
         }
       });
@@ -451,7 +455,7 @@ function onPrompt(line) {
     case `exit!`:
       // 저장없이 프로그램을 종료
       const saveOff = false;
-      goodbye(saveOff);
+      exit(saveOff);
       break;
 
     // help 예약어는 사용법을 제안합니다
@@ -468,7 +472,7 @@ function onPrompt(line) {
   }
 
   // 히스토리가 최대치보다 많으면 과거부터 삭제
-  while (items(history) > constants.maxHistorySize) history.pop();
+  while (items(history) > g.maxHistorySize) history.pop();
 
   // 프롬프트를 출력
   output();
@@ -491,7 +495,7 @@ function onPrompt(line) {
           // 커맨드를 터미널에 표시
           output(`> ${cmd}: ${payload}`);
           // 지정한 커맨드를 전송
-          sender(payload);
+          send(payload);
         }
       }
     }
@@ -505,7 +509,7 @@ function onPrompt(line) {
     // 커서 아래의 화면을 삭제
     Prompt.clearScreenDown(process.stdout);
     // 환영 메시지를 출력
-    logging(constants.simpleWelcome);
+    logging(g.simpleWelcome);
     // 프롬프트를 출력
     output();
   }
@@ -537,9 +541,9 @@ function onCmd(parse, quick = true) {
         // 가져올 커맨드를 전체 커맨드에서 검색
         for (const [cmd, payload] of Object.entries(command)) if (search(cmd, wildcard)) {
           // 텍스트 길이가 프롬프트 범위를 초과하는지 확인
-          const whenOverLimit = text.length + payload.length > constants.maxPromptLimit;
+          const whenLimit = text.length + payload.length > g.maxPromptLimit;
           // 범위를 벗어난 커맨드를 출력
-          if (whenOverLimit) logging(`- get ${cmd}: ${payload}`); else {
+          if (whenLimit) logging(`- get ${cmd}: ${payload}`); else {
             // 합쳐질 커맨드를 출력
             logging(`+ get ${cmd}: ${payload}`);
             // 텍스트를 합침
@@ -566,8 +570,8 @@ function onCmd(parse, quick = true) {
         let key, value;
         const cmd = parse.params[i];
         // 커맨드가 a=b 로 구성된 경우
-        const delimiter = !empty(cmd) && cmd.includes(`=`);
-        if (delimiter) {
+        const whenDelimiter = !empty(cmd) && cmd.includes(`=`);
+        if (whenDelimiter) {
           // 딜리미터로 커맨드와 페이로드를 분리
           const split = cmd.split(`=`);
           key = split[0];
@@ -641,7 +645,7 @@ function onCmd(parse, quick = true) {
         if (whenText) output(`> ${payload}`);
         else output(`> ${cmd}: ${payload}`);
         // 지정한 커맨드를 전송
-        sender(payload);
+        send(payload);
       }
       break;
   }
@@ -685,7 +689,7 @@ function onUrl(states = true) {
 function onHistory(parse) {
   // 히스토리를 모두 출력
   const whenEmptySubCmd = !parse.sub;
-  if (whenEmptySubCmd) historyAll(constants.showHistorySize);
+  if (whenEmptySubCmd) historyAll(g.showHistorySize);
   // 커맨드를 구분하여 처리
   else switch (parse.sub) {
     case `all`:
@@ -694,7 +698,7 @@ function onHistory(parse) {
       break;
 
     case `del`:
-      // sub 커맨드를 배열에서 삭제
+      // sub 커맨드를 배열에서 삭제π
       parse.params.shift();
       // 히스토리를 복사하고
       let remain = history.slice().reverse();
@@ -796,7 +800,7 @@ function letsConnections() {
           // 연결이 모두 끊겼는지 확인: 연결중인 항목이 없고 연결된 항목이 없으면 모두 끊긴것
           const whenOffline = zero(states.connecting) && zero(states.open);
           // 프로그램을 종료
-          if (whenOffline) goodbye();
+          if (whenOffline) exit();
         });
         // 연결이 끊기면 재연결을 하지 않도록 0을 반환
         const shouldNotReconnection = 0;
@@ -828,7 +832,7 @@ function letsConnections() {
 
 // 웹소켓으로 전송
 // - payload: 전문
-function sender(payload) {
+function send(payload) {
   let count = 0;
   // 연결된 전체 웹소켓으로 커맨드를 전송합니다
   if (!empty(payload)) for (const id in connections) {
@@ -899,10 +903,10 @@ function online(onState) {
   return states[open].count;
 }
 
-// 마지막 문구를 출력하고 프로그램을 종료
+// 저장을 한후에 마지막 문구를 출력하고 프로그램을 종료
 // - saveCommandAndHistory: 커맨드와 히스토리 파일을 저장
 // - message: 종료직전에 출력할 마지막 문구
-function goodbye(saveCommandAndHistory = true, messages = []) {
+function exit(saveCommandAndHistory = true, messages = []) {
   // 일반 문자열이면 배열로 변경
   const whenNotArray = !Array.isArray(messages) && !empty(messages);
   if (whenNotArray) messages = [messages];
@@ -924,7 +928,7 @@ function goodbye(saveCommandAndHistory = true, messages = []) {
     messages.push(`No Saving`);
   }
   // 마지막 메시지를 출력
-  const message = zero(items(messages)) ? `${constants.goodbye}` : `${constants.goodbye} (${messages})`;
+  const message = zero(items(messages)) ? `${g.goodbye}` : `${g.goodbye} (${messages})`;
   const promptOff = false;
   output(message, promptOff);
   // 프로그램을 종료
