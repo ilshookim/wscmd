@@ -105,17 +105,12 @@ const constants = {
   prompt: `$ `,
 };
 
-// 스펙
-const spec = {
-  ...constants,
-  configure: configure,
-};
-
-// 모듈
+// 모듈 스펙
 // - 환경, 상수과 스펙을 외부에서 사용
 // - 함수를 외부에서 사용
-const g = module.exports = {
-  ...spec,
+const spec = module.exports = {
+  configure: configure,
+  ...constants,
   ...functions,
   init: init,
   run: run,
@@ -126,12 +121,12 @@ const g = module.exports = {
 //
 
 const kUsageNpm =
-  `  usage: $ npm run ${g.configure.execute} -- [options] wss://localhost:9511/topics\n` +
-  `         $ node bin/${g.configure.execute} [options] ws://localhost:9510/topics wss://localhost:9511/topics\n\n`;
+  `  usage: $ npm run ${spec.configure.execute} -- [options] wss://localhost:9511/topics\n` +
+  `         $ node bin/${spec.configure.execute} [options] ws://localhost:9510/topics wss://localhost:9511/topics\n\n`;
 
 const kUsagePkg =
-  `  usage: $ ./${g.configure.execute} [options] wss://localhost:9511/topics\n` +
-  `         $ ./${g.configure.execute} [options] ws://localhost:9510/topics wss://localhost:9511/topics\n\n`;
+  `  usage: $ ./${spec.configure.execute} [options] wss://localhost:9511/topics\n` +
+  `         $ ./${spec.configure.execute} [options] ws://localhost:9510/topics wss://localhost:9511/topics\n\n`;
 
 const kOptions =
   `  options: --cmd=command --history=history   - change command and history filename\n` +
@@ -143,7 +138,7 @@ const kKeys =
   `  > <tab><tab>                               - show auto-completion commands/reserves\n\n`;
 
 const kUsage =
-  `${g.configure.pkg ? kUsagePkg : kUsageNpm}` +
+  `${spec.configure.pkg ? kUsagePkg : kUsageNpm}` +
   `${kOptions}` +
   `${kKeys}` +
   `  > [name, …]                                - /quick/ run commands by name\n` +
@@ -156,8 +151,8 @@ const kUsage =
   `    cmd set [name=payload, name, payload, …] - set commands by delimiter\n` +
   `    cmd del [name, wildcard, …]              - delete commands by name\n` + `\n` +
   `  > url | ll | ls                            - show online states and urls\n` + `\n` +
-  `  > history [count]                          - show history until count (default=${g.showHistorySize})\n` +
-  `    history all                              - show history (max=${g.maxHistorySize})\n` +
+  `  > history [count]                          - show history until count (default=${spec.showHistorySize})\n` +
+  `    history all                              - show history (max=${spec.maxHistorySize})\n` +
   `    history del [wildcard]                   - delete history by wildcard\n` + `\n` +
   `  > clear                                    - clear screen\n` +
   `    exit!                                    - program exit without any saving\n` +
@@ -210,14 +205,14 @@ init({initial: true});
 // 모듈을 초기화
 function init(state = {initial: false, reload: false}) {
   // NODEJS 런타임에서 호출하면 자동으로 run() 함수를 실행합니다
-  const whenNodeRuntime = state && state.initial && g.configure.node;
+  const whenNodeRuntime = state && state.initial && spec.configure.node;
   if (whenNodeRuntime) run();
 }
 
 // 모듈을 실행
 function run() {
   // 환영 메시지를 출력합니다
-  logging(g.welcome);
+  logging(spec.welcome);
 
   // 프로그램 인자를 구문분석합니다
   const helpOff = false;
@@ -238,11 +233,11 @@ function run() {
   // - --history=[히스토리 파일이름]
   if (parse.prj) parse.cmd = `${parse.prj}-command`;
   if (parse.prj) parse.history = `${parse.prj}-history`;
-  spec.commandFile = Path.join(g.configure.pwdPath, parse.cmd ? parse.cmd : spec.commandFile);
-  spec.historyFile = Path.join(g.configure.pwdPath, parse.history ? parse.history : spec.historyFile);
+  spec.commandFile = Path.join(spec.configure.pwdPath, parse.cmd ? parse.cmd : spec.commandFile);
+  spec.historyFile = Path.join(spec.configure.pwdPath, parse.history ? parse.history : spec.historyFile);
   logging(`  % command=${spec.commandFile}`);
   logging(`  % history=${spec.historyFile}`);
-  logging(g.newline);
+  logging(spec.newline);
 
   // 실행 경로와 URL 현황을 출력합니다 /접속상태는 제외/
   const statesOff = false;
@@ -257,7 +252,7 @@ function run() {
     const saveOff = false;
     exit(saveOff);
   }
-  logging(g.newline);
+  logging(spec.newline);
 
   // 커맨드 파일을 로드합니다
   const whenExistsCommandFile = Fs.existsSync(spec.commandFile);
@@ -280,7 +275,7 @@ function run() {
     // TEXT 형식을 배열로 변환하고 역순으로 변경하고 빈 라인을 제거
     history = text.split(`\n`).reverse().filter((line) => !empty(line));
     // 히스토리가 최대치보다 많으면 과거부터 삭제
-    while (items(history) > g.maxHistorySize) history.pop();
+    while (items(history) > spec.maxHistorySize) history.pop();
   }
 
   // 웹소켓을 시작합니다
@@ -333,11 +328,11 @@ function letsPrompts() {
     // 터미널로 설정
     terminal: true,
     // 프롬프트를 설정
-    prompt: g.prompt,
+    prompt: spec.prompt,
     // 히스토리를 설정
     history: history,
     // 히스토리 최대수를 설정
-    historySize: g.maxHistorySize,
+    historySize: spec.maxHistorySize,
     // 커맨드를 자동완성
     completer: onPromptAutoComplete,
   });
@@ -366,7 +361,7 @@ function letsPrompts() {
   // - line: 프롬프트에서 받은 문자열
   function onPromptAutoComplete(line) {
     // 예약어를 배열로 작성
-    const reserves = g.reserves.split(' ');
+    const reserves = spec.reserves.split(' ');
     // 예약어와 커맨드를 하나로 합침
     const completions = [...reserves, ...Object.keys(command).sort()];
     // 입력한 커맨드를 배열로 변경
@@ -472,7 +467,7 @@ function onPrompt(line) {
   }
 
   // 히스토리가 최대치보다 많으면 과거부터 삭제
-  while (items(history) > g.maxHistorySize) history.pop();
+  while (items(history) > spec.maxHistorySize) history.pop();
 
   // 프롬프트를 출력
   output();
@@ -509,7 +504,7 @@ function onPrompt(line) {
     // 커서 아래의 화면을 삭제
     Prompt.clearScreenDown(process.stdout);
     // 환영 메시지를 출력
-    logging(g.simpleWelcome);
+    logging(spec.simpleWelcome);
     // 프롬프트를 출력
     output();
   }
@@ -541,7 +536,7 @@ function onCmd(parse, quick = true) {
         // 가져올 커맨드를 전체 커맨드에서 검색
         for (const [cmd, payload] of Object.entries(command)) if (search(cmd, wildcard)) {
           // 텍스트 길이가 프롬프트 범위를 초과하는지 확인
-          const whenLimit = text.length + payload.length > g.maxPromptLimit;
+          const whenLimit = text.length + payload.length > spec.maxPromptLimit;
           // 범위를 벗어난 커맨드를 출력
           if (whenLimit) logging(`- get ${cmd}: ${payload}`); else {
             // 합쳐질 커맨드를 출력
@@ -689,7 +684,7 @@ function onUrl(states = true) {
 function onHistory(parse) {
   // 히스토리를 모두 출력
   const whenEmptySubCmd = !parse.sub;
-  if (whenEmptySubCmd) historyAll(g.showHistorySize);
+  if (whenEmptySubCmd) historyAll(spec.showHistorySize);
   // 커맨드를 구분하여 처리
   else switch (parse.sub) {
     case `all`:
@@ -928,7 +923,7 @@ function exit(saveCommandAndHistory = true, messages = []) {
     messages.push(`No Saving`);
   }
   // 마지막 메시지를 출력
-  const message = zero(items(messages)) ? `${g.goodbye}` : `${g.goodbye} (${messages})`;
+  const message = zero(items(messages)) ? `${spec.goodbye}` : `${spec.goodbye} (${messages})`;
   const promptOff = false;
   output(message, promptOff);
   // 프로그램을 종료
