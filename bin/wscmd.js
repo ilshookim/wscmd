@@ -84,7 +84,7 @@ const constants = {
   // 환영 메시지
   welcome: `${configure.execute} ${configure.version} - ${configure.copyright}, ${configure.written}\n`,
   // 전체화면을 지운후에 환영 메시지
-  simpleWelcome: `${configure.execute} ${configure.version} - ${configure.copyright}\n`,
+  simple: `${configure.execute} ${configure.version} - ${configure.copyright}\n`,
   // 예약어 목록
   reserves: `cmd get set del history clear exit exit! help`,
   // 안녕 메시지
@@ -105,9 +105,9 @@ const constants = {
   prompt: `$ `,
 };
 
-// 모듈 스펙
-// - 환경, 상수과 스펙을 외부에서 사용
-// - 함수를 외부에서 사용
+// 외부에서 사용하는 모듈과 스펙
+// - 환경, 상수, 함수
+// - 초기화, 실행
 const spec = module.exports = {
   configure: configure,
   ...constants,
@@ -210,14 +210,15 @@ function init(state = {initial: false, reload: false}) {
 }
 
 // 모듈을 실행
-function run() {
+// - options: 실행하려는 옵션
+function run(options) {
   // 환영 메시지를 출력합니다
   logging(spec.welcome);
 
   // 프로그램 인자를 구문분석합니다
   const helpOff = false;
   const param = Parser.help(helpOff).parse(process.argv.slice(2));
-  const parse = { ...param, argv: param._, seq: 0 };
+  const parse = { ...param, argv: param._, seq: 0, ...options };
 
   // 프로그램 인자에서 접속할 URL 정보를 구분합니다
   for (const url of parse.argv) {
@@ -503,8 +504,8 @@ function onPrompt(line) {
     Prompt.cursorTo(process.stdout, cursorToX, cursorToY);
     // 커서 아래의 화면을 삭제
     Prompt.clearScreenDown(process.stdout);
-    // 환영 메시지를 출력
-    logging(spec.simpleWelcome);
+    // 심플 메시지를 출력
+    logging(spec.simple);
     // 프롬프트를 출력
     output();
   }
