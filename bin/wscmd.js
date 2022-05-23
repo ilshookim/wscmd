@@ -1,9 +1,9 @@
 /**
  * bin/wscmd: copyright (c) 2022 websocket command, designed by ilshookim
- * 1 들여쓰기: 스페이스 2 고정, UTF8 NoBOM, 라인 주석은 23 또는 53 컬럼에서 남김
+ * 1 들여쓰기: 스페이스 2 고정, UTF8(NoBOM), 컬럼 주석은 23 또는 53 컬럼에서 시작하여 남김
  * 2 문자포맷: 백틱을 사용 `${expr}`
  * 3 정의방식: 상수 const, 변수 let, 항상 세미콜론을 사용 (예외처리 try-catch, 함수 정의에서 제외)
- * 4 작성순서: 포함, 환경, 함수, 상수, 스펙, 모듈, 프로그램 정의, 함수 정의 순으로 작성
+ * 4 작성순서: 포함, 환경, 함수, 상수, 모듈, 프로그램 구현, 함수 정의, 공용함수 정의 순으로 작성
  */
 
 `use strict`;
@@ -48,11 +48,11 @@ const configure = {
 // 함수
 const functions = {
   // 키입력을 시작
-  keys: letsKeys,
+  letsKeys: letsKeys,
   // 프롬프트를 시작
-  prompts: letsPrompts,
+  letsPrompts: letsPrompts,
   // 전체 서버에 연결을 시작
-  connections: letsConnections,
+  letsConnections: letsConnections,
   // 페이로드를 연결로 보냄
   send: send,
   // 터미널에 출력하고 프롬프트를 표시
@@ -100,20 +100,32 @@ const constants = {
   // 최대 프롬프트 제한수
   maxPromptLimit: 262144,
   // 한줄띄움
-  newline: ``,
+  promptNewline: ``,
   // 프롬프트 형식
-  prompt: `$ `,
+  promptChar: `$ `,
 };
 
-// 외부에서 사용하는 모듈과 스펙
-// - 환경, 상수, 함수
-// - 초기화, 실행
+// 모듈
 const spec = module.exports = {
+  // 스펙을 정의: 환경, 상수, 함수, 초기화, 실행을 외부에 제공
   configure: configure,
   ...constants,
   ...functions,
   init: init,
   run: run,
+  // 플래그를 정의
+  // - 프롬프트가 교체중인지: 교체중이면 true
+  // - 히스토리에 일부를 삭제하면 히스토리를 다시 지정하여 프롬프트를 재시작이 필요
+  shouldReplacePrompt: false,
+  // 변수를 정의
+  // - 프롬프트
+  prompt: null,
+  // - 커맨드 목록
+  commands: {},
+  // - 히스토리 목록
+  history: [],
+  // - 연결 목록
+  connections: {},
 };
 
 //
@@ -162,25 +174,10 @@ const kHelp =
   `\n${kUsage}`;
 
 //
-// 웹소켓 CLI 구현
+// 웹소켓 커맨드 구현
 //
 
-// 플래그를 정의
-// - 프롬프트가 교체중인지: 교체중이면 true
-// - 히스토리에 일부를 삭제하면 히스토리를 다시 지정하여 프롬프트를 재시작이 필요
-let shouldReplacePrompt = false;
-
-// 변수를 정의
-// - 프롬프트
-let prompt = null;
-// - 커맨드 목록
-let command = {};
-// - 히스토리 목록
-let history = [];
-// - 연결 목록
-let connections = {};
-
-// 기능을 정의
+// 수정사항 기능을 정의
 // 커맨드와 히스토리 파일이 쓰는 시점에서 수정이 되었는지 확인
 const modifications = {
   // 읽은 시점에 시간을 보관
@@ -200,10 +197,10 @@ const modifications = {
 // 모듈 초기화를 자동으로 실행합니다
 // - NODEJS 런타임에서 호출하면 자동으로 run() 함수를 실행
 //
-init({initial: true});
+init({ initial: true });
 
 // 모듈을 초기화
-function init(state = {initial: false, reload: false}) {
+function init(state = { initial: false, reload: false }) {
   // NODEJS 런타임에서 호출하면 자동으로 run() 함수를 실행합니다
   const whenNodeRuntime = state && state.initial && spec.configure.node;
   if (whenNodeRuntime) run();
@@ -225,7 +222,7 @@ function run(options) {
     // id 생성: url0, url1, url2
     const id = `url${parse.seq++}`;
     // id 마다 접속할 URL 구성
-    connections[id] = { url: [url] };
+    spec.connections[id] = { url: [url] };
   }
 
   // 히스토리 파일과 커맨드 파일을 전체경로로 출력합니다
@@ -238,14 +235,14 @@ function run(options) {
   spec.historyFile = Path.join(spec.configure.pwdPath, parse.history ? parse.history : spec.historyFile);
   logging(`  % command=${spec.commandFile}`);
   logging(`  % history=${spec.historyFile}`);
-  logging(spec.newline);
+  logging(spec.promptNewline);
 
   // 실행 경로와 URL 현황을 출력합니다 /접속상태는 제외/
   const statesOff = false;
   onUrl(statesOff);
 
   // 연결이 한 개도 없으면 프로그램을 종료합니다
-  const whenNoConnections = zero(items(connections));
+  const whenNoConnections = zero(items(spec.connections));
   if (whenNoConnections) {
     // 사용방법을 출력
     logging(kUsage)
@@ -253,7 +250,7 @@ function run(options) {
     const saveOff = false;
     exit(saveOff);
   }
-  logging(spec.newline);
+  logging(spec.promptNewline);
 
   // 커맨드 파일을 로드합니다
   const whenExistsCommandFile = Fs.existsSync(spec.commandFile);
@@ -263,7 +260,7 @@ function run(options) {
     // 커맨드 파일을 로드
     const yaml = Fs.readFileSync(spec.commandFile);
     // YAML 형식을 JSON 형식으로 변환
-    command = Yaml.load(yaml);
+    spec.commands = Yaml.load(yaml);
   }
 
   // 히스토리 파일을 로드합니다
@@ -274,9 +271,9 @@ function run(options) {
     // 히스토리 파일을 로드
     const text = Fs.readFileSync(spec.historyFile).toString();
     // TEXT 형식을 배열로 변환하고 역순으로 변경하고 빈 라인을 제거
-    history = text.split(`\n`).reverse().filter((line) => !empty(line));
+    spec.history = text.split(`\n`).reverse().filter((line) => !empty(line));
     // 히스토리가 최대치보다 많으면 과거부터 삭제
-    while (items(history) > spec.maxHistorySize) history.pop();
+    while (items(spec.history) > spec.maxHistorySize) history.pop();
   }
 
   // 웹소켓을 시작합니다
@@ -294,7 +291,7 @@ function letsKeys() {
   // 프롬프트에서 ESC 키를 눌러 입력한 라인을 삭제
   process.stdin.on(`keypress`, function onKeyPress(_, key) {
     // 입력한 라인에 삭제가 필요한지 확인
-    const whenClearPrompt = key && equals(key.name, `escape`) && prompt && !empty(prompt.line);
+    const whenClearPrompt = key && equals(key.name, `escape`) && spec.prompt && !empty(spec.prompt.line);
     if (whenClearPrompt) {
       // 프롬프트에서 입력하던 라인을 삭제
       const [clearLineLeft, clearLineRight, clearLineWhole] = [-1, 1, 0];
@@ -303,9 +300,9 @@ function letsKeys() {
       const [cursorToX, cursorToY] = [0, undefined];
       Prompt.cursorTo(process.stdout, cursorToX, cursorToY);
       // 입력한 라인을 삭제
-      prompt.line = '';
+      spec.prompt.line = '';
       // 프롬프트를 출력
-      prompt.prompt();
+      spec.prompt.prompt();
     }
   });
 }
@@ -313,25 +310,25 @@ function letsKeys() {
 // 프롬프트를 시작
 function letsPrompts() {
   // 이전 프롬프트가 이미 있는지 확인합니다
-  const whenAlreadyExistsPrompt = prompt;
+  const whenAlreadyExistsPrompt = spec.prompt;
   if (whenAlreadyExistsPrompt) {
     // 이전 프롬프트 대체를 시작
-    shouldReplacePrompt = true;
+    spec.shouldReplacePrompt = true;
     // 이전 프롬프트 종료
-    prompt.close();
+    spec.prompt.close();
   }
 
   // 새로운 프롬프트를 시작합니다
-  prompt = Prompt.createInterface({
+  spec.prompt = Prompt.createInterface({
     // 입력라인에서 입출력을 활용
     input: process.stdin,
     output: process.stdout,
     // 터미널로 설정
     terminal: true,
     // 프롬프트를 설정
-    prompt: spec.prompt,
+    prompt: spec.promptChar,
     // 히스토리를 설정
-    history: history,
+    history: spec.history,
     // 히스토리 최대수를 설정
     historySize: spec.maxHistorySize,
     // 커맨드를 자동완성
@@ -339,18 +336,18 @@ function letsPrompts() {
   });
 
   // 프로그램을 종료 이벤트를 처리
-  prompt.on(`close`, function onPromptClose() {
+  spec.prompt.on(`close`, function onPromptClose() {
     // 프로그램을 종료를 확인
-    const whenProgramExit = !shouldReplacePrompt;
+    const whenProgramExit = !spec.shouldReplacePrompt;
     // 파일이 수정됐으면 저장이 없이 종료, 수정되지 않았으면 저장하고 종료
     const shouldSaveWhenNotModified = modifications.modified() ? false : true;
     if (whenProgramExit) exit(shouldSaveWhenNotModified);
     // 새로운 프롬프트로 대체를 완료
-    shouldReplacePrompt = false;
+    spec.shouldReplacePrompt = false;
   });
 
   // 프롬프트에서 입력한 라인을 처리
-  prompt.on(`line`, function onPromptLine(line) {
+  spec.prompt.on(`line`, function onPromptLine(line) {
     onPrompt(line);
   });
 
@@ -364,15 +361,15 @@ function letsPrompts() {
     // 예약어를 배열로 작성
     const reserves = spec.reserves.split(' ');
     // 예약어와 커맨드를 하나로 합침
-    const completions = [...reserves, ...Object.keys(command).sort()];
+    const completions = [...reserves, ...Object.keys(spec.commands).sort()];
     // 입력한 커맨드를 배열로 변경
     const commands = line.split(' ');
     // 입력한 마지막 커맨드를 확인
-    const lastCmd = commands.slice(-1)[0];
+    const last = commands.slice(-1)[0];
     // 입력한 마지막 커맨드에 맞는 자동완성할 커맨드를 검색
-    const hits = completions.filter(completion => completion.startsWith(lastCmd));
+    const hits = completions.filter(completion => completion.startsWith(last));
     // 자동완성할 커맨드와 함께 입력한 마지막 커맨드를 반환
-    const hitsCompletionsAndPartial = [items(hits) ? hits : completions, lastCmd];
+    const hitsCompletionsAndPartial = [items(hits) ? hits : completions, last];
     return hitsCompletionsAndPartial;
   }
 }
@@ -428,20 +425,20 @@ function onPrompt(line) {
       // 커맨드와 히스토리를 파일에 저장하고 프로그램을 종료
       const whenNotModified = !modifications.modified();
       if (whenNotModified) exit();
-      else prompt.question(`  detected modifications, overwrite command/history? [Y/n/c] `, function onAnswer(answer) {
+      else spec.prompt.question(`  detected modifications, overwrite command/history? [Y/n/c] `, function onAnswer(answer) {
         switch (answer.trim().toLowerCase()) {
           case `y`:
             // 커맨드와 히스토리를 파일에 저장하고 프로그램을 종료
             exit();
             break;
-          case `c`:
-            // 프롬프트를 출력
-            output();
-            break;
-          case `n`: default:
+          case `n`:
             // 저장없이 프로그램을 종료
             const saveOff = false;
             exit(saveOff);
+            break;
+          case `c`: default:
+            // 프롬프트를 출력
+            output();
             break;
         }
       });
@@ -468,7 +465,7 @@ function onPrompt(line) {
   }
 
   // 히스토리가 최대치보다 많으면 과거부터 삭제
-  while (items(history) > spec.maxHistorySize) history.pop();
+  while (items(spec.history) > spec.maxHistorySize) spec.history.pop();
 
   // 프롬프트를 출력
   output();
@@ -483,7 +480,7 @@ function onPrompt(line) {
     if (!empty(line)) {
       for (const cmd of parse.raw) if (!empty(cmd)) {
         // 커맨드에 있는지 확인
-        let payload = empty(command[cmd]) ? null : command[cmd];
+        let payload = empty(spec.commands[cmd]) ? null : spec.commands[cmd];
         // 알수없는 커맨드로 표시, 또는 유효한 커맨드는 페이로드를 전송
         if (!payload) output(`? ${cmd}`); else {
           // 감싸진 ' 또는 " 를 문자열에서 벗김
@@ -535,7 +532,7 @@ function onCmd(parse, quick = true) {
       // 가져올 커맨드를 확인
       for (const wildcard of parse.params) if (!empty(wildcard)) {
         // 가져올 커맨드를 전체 커맨드에서 검색
-        for (const [cmd, payload] of Object.entries(command)) if (search(cmd, wildcard)) {
+        for (const [cmd, payload] of Object.entries(spec.commands)) if (search(cmd, wildcard)) {
           // 텍스트 길이가 프롬프트 범위를 초과하는지 확인
           const whenLimit = text.length + payload.length > spec.maxPromptLimit;
           // 범위를 벗어난 커맨드를 출력
@@ -554,7 +551,7 @@ function onCmd(parse, quick = true) {
       // 텍스트가 비었는지 확인
       const whenPaste = !empty(text);
       // 텍스트가 있으면 프롬프트에 반영
-      if (whenPaste) prompt.line = `cmd ${text}`;
+      if (whenPaste) spec.prompt.line = `cmd ${text}`;
       break;
 
     case `set`:
@@ -581,15 +578,16 @@ function onCmd(parse, quick = true) {
         // set 가능여부를 확인
         const shouldSet = !empty(key) && !empty(value);
         // set 출력
-        if (!shouldSet) logging(`- set ${key}: ${value}`); {
+        if (!shouldSet) logging(`- set ${key}: ${value}`);
+        else {
           // 커맨드를 추가
-          command[key] = disclosureQuotes(value);
+          spec.commands[key] = disclosureQuotes(value);
           // 지정한 커맨드를 출력
-          logging(`+ set ${key}: ${command[key]}`);
+          logging(`+ set ${key}: ${spec.commands[key]}`);
           whenSet = true;
         }
       }
-      if (whenSet) logging(`  ${items(command)} items`);
+      if (whenSet) logging(`  ${items(spec.commands)} items`);
       break;
 
     case `del`:
@@ -599,20 +597,22 @@ function onCmd(parse, quick = true) {
       const deletes = [];
       for (const wildcard of parse.params) {
         // 삭제 대상인 커맨드인지 검색
-        for (const [cmd, payload] of Object.entries(command)) if (search(cmd, wildcard)) {
+        for (const [cmd, payload] of Object.entries(spec.commands)) if (search(cmd, wildcard)) {
           // 커맨드를 출력하여 검토
           logging(`- ${cmd}: ${payload}`);
           deletes.push(cmd);
         }
       }
       // 검토한 항목이 있으면 삭제를 문답
-      prompt.question(`  [Y/n]`, function onAnswer(answer) {
+      const whenDelete = items(deletes);
+      // 검토한 항목이 있으면 삭제를 문답
+      if (whenDelete) spec.prompt.question(`  [Y/n]`, function onAnswer(answer) {
         switch (answer.trim().toLowerCase()) {
           case `y`:
             // 검토한 커맨드를 모두 삭제
-            for (const cmd of deletes) delete command[cmd];
+            for (const cmd of deletes) delete spec.commands[cmd];
             // 삭제한 결과를 출력
-            logging(`  ${items(command)} items (deleted ${items(deletes)} items)`);
+            logging(`  ${items(spec.commands)} items (deleted ${items(deletes)} items)`);
             // 프롬프트를 출력
             output();
             break;
@@ -632,9 +632,9 @@ function onCmd(parse, quick = true) {
       // 커맨드를 확인
       for (const cmd of parse.params) if (!empty(cmd)) {
         // 텍스트인지 확인
-        const whenText = empty(command[cmd]);
+        const whenText = empty(spec.commands[cmd]);
         // 커맨드에 있는지 확인
-        let payload = whenText ? cmd : command[cmd];
+        let payload = whenText ? cmd : spec.commands[cmd];
         // 감싸진 ' 또는 " 를 문자열에서 벗김
         payload = disclosureQuotes(payload);
         // 커맨드를 터미널에 표시
@@ -656,8 +656,8 @@ function onCmd(parse, quick = true) {
   // 히스토리를 모두 출력
   function cmdAll() {
     // 전체 커맨드를 모두 출력
-    logging(Yaml.dump(command, { lineWidth: -1 }).trim());
-    logging(`  ${items(command)} items`);
+    logging(Yaml.dump(spec.commands, { lineWidth: -1 }).trim());
+    logging(`  ${items(spec.commands)} items`);
   }
 }
 
@@ -665,9 +665,9 @@ function onCmd(parse, quick = true) {
 // - states: 온라인/오프라인 상태구분이 필요하면 true
 function onUrl(states = true) {
   let [online, offline] = [0, 0];
-  for (const id in connections) {
+  for (const id in spec.connections) {
     // 연결된 전체 목록에서 웹소켓을 연결을 확인
-    const connection = connections[id];
+    const connection = spec.connections[id];
     // 웹소켓 연결이 온라인 상태인지 확인
     const connected = connection && connection.client && equals(connection.client.readyState, 1);
     // +(온라인) / -(오프라인)을 카운트
@@ -677,7 +677,7 @@ function onUrl(states = true) {
     // 접속상태와 URL 정보를 출력
     logging(`${state} [${id}] ${connection.url}`)
   }
-  if (states) logging(`  ${items(connections)} items (online[+]: ${online}, offline[-]: ${offline})`);
+  if (states) logging(`  ${items(spec.connections)} items (online[+]: ${online}, offline[-]: ${offline})`);
 }
 
 // 히스토리 커맨드를 처리
@@ -697,7 +697,7 @@ function onHistory(parse) {
       // sub 커맨드를 배열에서 삭제π
       parse.params.shift();
       // 히스토리를 복사하고
-      let remain = history.slice().reverse();
+      let remain = spec.history.slice().reverse();
       // 삭제 대상인 히스토리를 검토
       const shouldNotDelete = true;
       for (const wildcard of parse.params) remain = remain.filter(cmd => {
@@ -707,16 +707,17 @@ function onHistory(parse) {
         else return shouldNotDelete;
       });
       // 검토한 항목이 있으면 삭제를 문답
-      const deletes = items(history) - items(remain);
-      if (deletes) prompt.question(`  [Y/n]`, function onAnswer(answer) {
+      const candidates = items(spec.history) - items(remain);
+      const whenDelete = candidates;
+      if (whenDelete) spec.prompt.question(`  [Y/n]`, function onAnswer(answer) {
         switch (answer.trim().toLowerCase()) {
           case `y`:
             // 검토한 히스토리를 모두 삭제
-            history = remain.reverse();
+            spec.history = remain.reverse();
             // 프롬프트를 다시 시작
             letsPrompts();
             // 삭제한 결과를 출력
-            logging(`  ${items(history)} items (deleted ${deletes} items for [${parse.params}])`);
+            logging(`  ${items(spec.history)} items (deleted ${candidates} items for [${parse.params}])`);
             // 프롬프트를 출력
             output();
             break;
@@ -752,18 +753,18 @@ function onHistory(parse) {
   function historyAll(count = null) {
     if (count) {
       // 히스토리가 카운트보다 많으면 과거부터 삭제
-      const copied = history.slice().reverse();
+      const copied = spec.history.slice().reverse();
       while (items(copied) > count) copied.shift();
       // 히스토리를 카운트 만큼 출력 /반대로 출력해야 읽기가 쉬움/
       for (const line of copied) logging(`${line}`);
       // 히스토리 출력수와 전체수를 출력
       const whenLessThanTotal = items(copied) < count;
-      if (whenLessThanTotal) logging(`  ${items(history)} items`);
-      else logging(`  ${count} items (total ${items(history)} items)`);
+      if (whenLessThanTotal) logging(`  ${items(spec.history)} items`);
+      else logging(`  ${count} items (total ${items(spec.history)} items)`);
     } else {
       // 히스토리를 모두 출력 /반대로 출력해야 읽기가 쉬움/
-      for (const line of history.slice().reverse()) logging(`${line}`);
-      logging(`  ${items(history)} items`);
+      for (const line of spec.history.slice().reverse()) logging(`${line}`);
+      logging(`  ${items(spec.history)} items`);
     }
   }
 }
@@ -771,9 +772,9 @@ function onHistory(parse) {
 // 전체 웹소켓에 접속
 function letsConnections() {
   // 연결마다 웹소켓에 접속합니다
-  for (const id in connections) {
+  for (const id in spec.connections) {
     // 연결을 확인
-    const [connection, options] = [connections[id], null];
+    const [connection, options] = [spec.connections[id], null];
     // 웹소켓 클라이언트에서 웹소켓 서버에 접속
     websocket(
       // 연결에 사용할 객체를 전달
@@ -807,8 +808,9 @@ function letsConnections() {
         output(`< [${id}] ${message}`);
       },
       // 웹소켓에서 에러를 받음
-      function onError(client, error) {
-        output(`< [${id}] error ${connection.url} '${error}'`);
+      function onError(error) {
+        if (empty(error)) output(`< [${id}] error ${connection.url}`);
+        else output(`< [${id}] error ${connection.url} '${error}'`);
       },
       // 웹소켓에서 PING 받음
       function onPing(client) {
@@ -831,9 +833,9 @@ function letsConnections() {
 function send(payload) {
   let count = 0;
   // 연결된 전체 웹소켓으로 커맨드를 전송합니다
-  if (!empty(payload)) for (const id in connections) {
+  if (!empty(payload)) for (const id in spec.connections) {
     // 연결된 전체 목록에서 웹소켓을 연결을 확인
-    const connection = connections[id];
+    const connection = spec.connections[id];
     // 웹소켓 연결이 온라인 상태인지 확인
     const whenOnline = connection && connection.client && equals(connection.client.readyState, 1);
     // 연결된 웹소켓에 커맨드를 전송
@@ -850,7 +852,7 @@ function send(payload) {
 // - cursor: 프롬프트 출력이 필요하면 true
 // - preserveCursor: 커서의 위치를 유지하면서 프롬프트 출력이 필요하면 true
 function output(message = undefined, cursor = true, preserveCursor = true) {
-  if (prompt) {
+  if (spec.prompt) {
     // 프롬프트와 입력하던 라인을 제거
     const [clearLineLeft, clearLineRight, clearLineWhole] = [-1, 1, 0];
     Prompt.clearLine(process.stdout, clearLineWhole);
@@ -860,9 +862,9 @@ function output(message = undefined, cursor = true, preserveCursor = true) {
     // /메시지가 있으면/ 메시지를 출력
     if (message) logging(message);
     // /입력하던 라인이 있으면/ 입력하던 라인을 다시 출력
-    if (!empty(prompt.line)) prompt.write(process.stdout, prompt.line);
+    if (!empty(spec.prompt.line)) spec.prompt.write(process.stdout, spec.prompt.line);
     // 커서 위치를 유지하면서 프롬프트를 다시 출력
-    if (cursor) prompt.prompt(preserveCursor);
+    if (cursor) spec.prompt.prompt(preserveCursor);
   } else logging(message);
 }
 
@@ -870,7 +872,7 @@ function output(message = undefined, cursor = true, preserveCursor = true) {
 // - onState(state): state 에 웹소켓 연결의 상태(connecting, open, closing, closed)마다 카운트를 전달
 function online(onState) {
   // 연결 정보가 한개도 없으면 0
-  if (zero(items(connections)))
+  if (zero(items(spec.connections)))
     return 0;
   // 연결한 상태
   const [connecting, open, closing, closed] = [0, 1, 2, 3];
@@ -882,9 +884,9 @@ function online(onState) {
     [closed]:     { count: 0 },
   };
   // 연결한 상태를 구분하여 카운트
-  for (const url in connections) {
+  for (const url in spec.connections) {
     // 연결을 확인
-    const connection = connections[url];
+    const connection = spec.connections[url];
     // 연결한 상태를 구분하여 카운트
     if (connection && connection.client) states[connection.client.readyState].count++;
   }
@@ -907,16 +909,16 @@ function exit(saveCommandAndHistory = true, messages = []) {
   const whenNotArray = !Array.isArray(messages) && !empty(messages);
   if (whenNotArray) messages = [messages];
   // 연결정보가 없으면 문구를 추가
-  if (zero(items(connections)) || !online()) messages.push(`No Connections`);
+  if (zero(items(spec.connections)) || !online()) messages.push(`No Connections`);
   // 커맨드와 히스토리를 파일에 저장하지 않음
   const whenSaveOff = !saveCommandAndHistory;
   if (whenSaveOff) messages.push(`No Saving`);
   // 커맨드와 히스토리를 파일에 저장
   else try {
     // 전체 커맨드를 JSON 형식에서 YML 형식으로 변환하고 커맨드 파일을 저장
-    if (items(command)) Fs.writeFileSync(spec.commandFile, Yaml.dump(command, { lineWidth: -1 }));
+    if (items(spec.commands)) Fs.writeFileSync(spec.commandFile, Yaml.dump(spec.commands, { lineWidth: -1 }));
     // 히스토리 배열을 TEXT 형식으로 변환하고 역순으로 변경하고 파일에 저장
-    if (items(history)) Fs.writeFileSync(spec.historyFile, history.reverse().join('\n'));
+    if (items(spec.history)) Fs.writeFileSync(spec.historyFile, spec.history.reverse().join('\n'));
     // 저장하고 종료
     messages.push(`Saving`);
   } catch (exc) {
@@ -945,7 +947,7 @@ function exit(saveCommandAndHistory = true, messages = []) {
 // - onError: 에러가 있는 경우
 // - onPing/onPong: PING/PONG 받은 경우
 function websocket(connection, url, options, onOpen, onClose, onMessage, onError, onPing, onPong) {
-  let self = { name: `websocket(connection, url, options)`, succeed: false };
+  let self = { name: `${websocket.name}(connection, url, options)`, succeed: false };
   try {
     // 연결을 준비하는 상태
     if (!connection.state) { connection.state = `idle`; connection.reconnects = 0; }
@@ -970,15 +972,12 @@ function websocket(connection, url, options, onOpen, onClose, onMessage, onError
       // 연결된 상태
       connection.state = `open`;
       connection.reconnects = 0;
-
       if (onOpen) onOpen(client);
     });
-
     // 연결이 끊김
     client.on(`close`, function (code) {
       // 연결이 끊긴 상태
       if (equals(connection.state, `open`)) connection.state = `close`;
-
       // 종료 이벤트를 호출하고 재접속
       if (onClose) {
         // 재접속 간격을 확인하고 설정된 간격 후에 재접속을 시도
@@ -989,31 +988,20 @@ function websocket(connection, url, options, onOpen, onClose, onMessage, onError
           connection, url, options, onOpen, onClose, onMessage, onError, onPing, onPong);
       }
     });
-
     // 서버에서 메시지를 받음
-    client.on(`message`, function (message) {
-      if (onMessage) onMessage(client, message);
-    });
-
+    client.on(`message`, function (message) { if (onMessage) onMessage(client, message); });
     // 서버에서 PING 받음
-    client.on(`ping`, function () {
-      if (onPing) onPing(client);
-    });
-
+    client.on(`ping`, function () { if (onPing) onPing(client); });
     // 서버에서 PONG 받음
-    client.on(`pong`, function () {
-      if (onPong) onPong(client);
-    });
-
+    client.on(`pong`, function () { if (onPong) onPong(client); });
     // 서버에서 에러를 받음
-    client.on(`error`, function (error) {
-      if (onError) onError(error);
-    });
+    client.on(`error`, function (error) { if (onError) onError(error); });
 
     self.succeed = true;
   }
   catch (exc) {
-    output(`exc=${self.exc = exc}`);
+    // 예외를 받음
+    if (onError) onError(exc);
   }
   return self;
 }
